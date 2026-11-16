@@ -1,9 +1,17 @@
 import { useState, type FormEvent } from 'react';
-import { Banknote, CheckCircle2 } from 'lucide-react';
+import {
+  ArrowLeftRight,
+  Banknote,
+  Check,
+  CheckCircle2,
+  Copy,
+  Smartphone,
+} from 'lucide-react';
 import type {
   CartItem,
   CheckoutFormInput,
   Language,
+  PaymentMethod,
   StoreSettings,
 } from '../types/store';
 import { NEIGHBORHOOD_SUGGESTIONS } from '../data/catalog';
@@ -12,6 +20,7 @@ import {
   calculateCartTotals,
   formatEGP,
   getEffectivePrice,
+  PAYMENT_TRANSFER_NUMBER,
   validateCheckoutForm,
   type CheckoutValidationErrors,
 } from '../utils/storeLogic';
@@ -45,8 +54,21 @@ export function CheckoutPage({
     address: '',
     instructions: '',
     paymentMethod: 'cod',
+    paymentReference: '',
   });
   const [errors, setErrors] = useState<CheckoutValidationErrors>({});
+  const [copiedTransfer, setCopiedTransfer] = useState(false);
+
+  const handleCopyTransferNumber = async () => {
+    try {
+      await navigator.clipboard.writeText(PAYMENT_TRANSFER_NUMBER);
+      setCopiedTransfer(true);
+      window.setTimeout(() => setCopiedTransfer(false), 2000);
+    } catch {
+      setCopiedTransfer(true);
+      window.setTimeout(() => setCopiedTransfer(false), 2000);
+    }
+  };
 
   if (items.length === 0) {
     return (
@@ -239,21 +261,165 @@ export function CheckoutPage({
           </div>
 
           {/* Payment Method */}
-          <div className="pt-2 space-y-2.5">
-            <span className="block text-sm font-semibold text-[#142218]">
+          <fieldset className="pt-2 space-y-3">
+            <legend className="block text-sm font-semibold text-[#142218]">
               {copy.paymentMethodLabel}
-            </span>
-            <div className="p-4 rounded-xl border border-[#0F5E36] bg-[#EEF5EE] flex items-start gap-3">
-              <Banknote className="w-5 h-5 text-[#0F5E36] mt-0.5 shrink-0" aria-hidden="true" />
-              <div className="flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-bold text-[#142218]">{copy.paymentCod}</span>
-                  <CheckCircle2 className="w-4 h-4 text-[#0F5E36]" aria-hidden="true" />
-                </div>
-                <p className="text-xs text-[#3D4B41] mt-1">{copy.paymentCodDesc}</p>
-              </div>
+            </legend>
+
+            <div className="grid grid-cols-1 gap-2.5">
+              {(
+                [
+                  {
+                    id: 'cod' as PaymentMethod,
+                    title: copy.paymentCod,
+                    desc: copy.paymentCodDesc,
+                    icon: Banknote,
+                  },
+                  {
+                    id: 'vodafone_cash' as PaymentMethod,
+                    title: copy.paymentVodafone,
+                    desc: copy.paymentVodafoneDesc,
+                    icon: Smartphone,
+                  },
+                  {
+                    id: 'instapay' as PaymentMethod,
+                    title: copy.paymentInstapay,
+                    desc: copy.paymentInstapayDesc,
+                    icon: ArrowLeftRight,
+                  },
+                ] as const
+              ).map((option) => {
+                const Icon = option.icon;
+                const isSelected = form.paymentMethod === option.id;
+                return (
+                  <label
+                    key={option.id}
+                    className={`p-4 rounded-xl border flex items-start gap-3 cursor-pointer transition-colors ${
+                      isSelected
+                        ? 'border-[#0F5E36] bg-[#EEF5EE]'
+                        : 'border-[#D4DDD1] bg-[#F9FAF8] hover:border-[#0F5E36]/50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="paymentMethod"
+                      value={option.id}
+                      checked={isSelected}
+                      onChange={() => {
+                        setForm({ ...form, paymentMethod: option.id });
+                        if (errors.paymentMethod) {
+                          setErrors({ ...errors, paymentMethod: undefined });
+                        }
+                      }}
+                      className="sr-only"
+                    />
+                    <Icon
+                      className={`w-5 h-5 mt-0.5 shrink-0 ${
+                        isSelected ? 'text-[#0F5E36]' : 'text-[#526056]'
+                      }`}
+                      aria-hidden="true"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-bold text-[#142218]">{option.title}</span>
+                        <span
+                          className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+                            isSelected
+                              ? 'border-[#0F5E36] bg-[#0F5E36] text-white'
+                              : 'border-[#9EB4A7] bg-white'
+                          }`}
+                          aria-hidden="true"
+                        >
+                          {isSelected && <CheckCircle2 className="w-3.5 h-3.5" />}
+                        </span>
+                      </div>
+                      <p className="text-xs text-[#3D4B41] mt-1">{option.desc}</p>
+                    </div>
+                  </label>
+                );
+              })}
             </div>
-          </div>
+
+            {errors.paymentMethod && (
+              <p className="text-xs text-[#B91C1C]" role="alert">
+                {errors.paymentMethod}
+              </p>
+            )}
+
+            {(form.paymentMethod === 'vodafone_cash' ||
+              form.paymentMethod === 'instapay') && (
+              <div
+                data-testid="digital-payment-instructions"
+                className="rounded-xl border border-[#C9DEC9] bg-[#F9FAF8] p-4 space-y-3"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <span className="text-xs font-semibold text-[#526056] block">
+                      {copy.transferNumberLabel}
+                    </span>
+                    <strong
+                      dir="ltr"
+                      className="text-lg font-extrabold text-[#0F5E36] tabular-nums tracking-wide"
+                    >
+                      {PAYMENT_TRANSFER_NUMBER}
+                    </strong>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCopyTransferNumber}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-[#D4DDD1] hover:border-[#0F5E36] text-xs font-semibold text-[#142218] transition-colors cursor-pointer"
+                  >
+                    {copiedTransfer ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-[#0F5E36]" aria-hidden="true" />
+                        <span className="text-[#0F5E36]">{copy.copiedNumber}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5 text-[#526056]" aria-hidden="true" />
+                        <span>{copy.copyNumber}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <p className="text-xs text-[#3D4B41] leading-relaxed">
+                  {copy.transferInstructionNote}
+                </p>
+
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="checkout-payment-reference"
+                    className="block text-xs font-semibold text-[#142218]"
+                  >
+                    {copy.paymentReferenceLabel}
+                  </label>
+                  <input
+                    id="checkout-payment-reference"
+                    type="text"
+                    value={form.paymentReference || ''}
+                    onChange={(e) => {
+                      setForm({ ...form, paymentReference: e.target.value });
+                      if (errors.paymentReference) {
+                        setErrors({ ...errors, paymentReference: undefined });
+                      }
+                    }}
+                    placeholder={copy.paymentReferencePlaceholder}
+                    className={`w-full h-10 px-3 rounded-lg border text-sm bg-white focus:outline-none ${
+                      errors.paymentReference
+                        ? 'border-[#B91C1C]'
+                        : 'border-[#D4DDD1] focus:border-[#0F5E36]'
+                    }`}
+                  />
+                  {errors.paymentReference && (
+                    <p className="text-xs text-[#B91C1C]" role="alert">
+                      {errors.paymentReference}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </fieldset>
         </div>
 
         {/* Order Summary & Submit */}

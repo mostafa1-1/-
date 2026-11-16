@@ -1,7 +1,13 @@
-import { CheckCircle2, MessageCircle, Phone, Printer } from 'lucide-react';
+import { useState } from 'react';
+import { Check, CheckCircle2, Copy, MessageCircle, Phone, Printer } from 'lucide-react';
 import type { Language, Order, StoreSettings } from '../types/store';
 import { t } from '../data/translations';
-import { formatEGP } from '../utils/storeLogic';
+import {
+  formatEGP,
+  getPaymentMethodLabel,
+  PAYMENT_METHOD_META,
+  PAYMENT_TRANSFER_NUMBER,
+} from '../utils/storeLogic';
 import { buildCustomerWhatsappOrderUrl } from '../utils/notificationLogic';
 
 interface OrderConfirmationPageProps {
@@ -18,6 +24,18 @@ export function OrderConfirmationPage({
   onContinueShopping,
 }: OrderConfirmationPageProps) {
   const copy = t(lang);
+  const [copiedTransfer, setCopiedTransfer] = useState(false);
+
+  const handleCopyTransferNumber = async () => {
+    try {
+      await navigator.clipboard.writeText(PAYMENT_TRANSFER_NUMBER);
+      setCopiedTransfer(true);
+      window.setTimeout(() => setCopiedTransfer(false), 2000);
+    } catch {
+      setCopiedTransfer(true);
+      window.setTimeout(() => setCopiedTransfer(false), 2000);
+    }
+  };
 
   const whatsappFollowupUrl = buildCustomerWhatsappOrderUrl(
     settings.whatsappNumber || '+201110688934',
@@ -33,6 +51,11 @@ export function OrderConfirmationPage({
       timeStyle: 'short',
     }
   );
+
+  const paymentMeta = PAYMENT_METHOD_META[order.customer.paymentMethod];
+  const isDigitalTransfer =
+    order.customer.paymentMethod === 'vodafone_cash' ||
+    order.customer.paymentMethod === 'instapay';
 
   return (
     <section className="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
@@ -67,19 +90,74 @@ export function OrderConfirmationPage({
           </div>
         </div>
 
-        {/* Customer Info */}
-        <div className="space-y-1.5 text-sm">
-          <h2 className="font-semibold text-[#142218]">
-            {lang === 'ar' ? 'بيانات التوصيل' : 'Delivery Information'}
-          </h2>
-          <p className="text-[#3D4B41]">
-            {order.customer.fullName} · <span dir="ltr">{order.customer.phone}</span>
-          </p>
-          <p className="text-[#526056]">
-            {order.customer.neighborhood} — {order.customer.address}
-          </p>
-          {order.customer.instructions && (
-            <p className="text-xs text-[#526056]">{order.customer.instructions}</p>
+        {/* Customer & Payment Info */}
+        <div className="space-y-3 text-sm">
+          <div className="space-y-1.5">
+            <h2 className="font-semibold text-[#142218]">
+              {lang === 'ar' ? 'بيانات التوصيل والدفع' : 'Delivery & Payment Details'}
+            </h2>
+            <p className="text-[#3D4B41]">
+              {order.customer.fullName} · <span dir="ltr">{order.customer.phone}</span>
+            </p>
+            <p className="text-[#526056]">
+              {order.customer.neighborhood} — {order.customer.address}
+            </p>
+            {order.customer.instructions && (
+              <p className="text-xs text-[#526056]">{order.customer.instructions}</p>
+            )}
+            <div className="pt-1 flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold text-[#526056]">
+                {copy.paymentMethodLabel}:
+              </span>
+              <span
+                className={`inline-flex items-center px-2.5 py-0.5 rounded-md border text-xs font-bold ${paymentMeta.badgeClass}`}
+              >
+                {getPaymentMethodLabel(order.customer.paymentMethod, lang)}
+              </span>
+              {order.customer.paymentReference && (
+                <span className="text-xs text-[#3D4B41]">
+                  ({lang === 'ar' ? 'المرجع:' : 'Ref:'}{' '}
+                  <strong dir="ltr">{order.customer.paymentReference}</strong>)
+                </span>
+              )}
+            </div>
+          </div>
+
+          {isDigitalTransfer && (
+            <div className="rounded-xl border border-[#C9DEC9] bg-[#EEF5EE] p-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="space-y-1">
+                <p className="text-xs font-bold text-[#0F5E36]">
+                  {lang === 'ar'
+                    ? `تذكير التحويل (${getPaymentMethodLabel(order.customer.paymentMethod, 'ar')})`
+                    : `${getPaymentMethodLabel(order.customer.paymentMethod, 'en')} Transfer Details`}
+                </p>
+                <p className="text-xs text-[#3D4B41]">
+                  {lang === 'ar'
+                    ? `يرجى تحويل مبلغ ${formatEGP(order.totalAmount, lang)} على رقم `
+                    : `Please transfer ${formatEGP(order.totalAmount, lang)} to `}
+                  <strong dir="ltr" className="tabular-nums text-[#142218]">
+                    {PAYMENT_TRANSFER_NUMBER}
+                  </strong>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleCopyTransferNumber}
+                className="no-print inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-[#C9DEC9] hover:border-[#0F5E36] text-xs font-semibold text-[#142218] cursor-pointer"
+              >
+                {copiedTransfer ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-[#0F5E36]" aria-hidden="true" />
+                    <span className="text-[#0F5E36]">{copy.copiedNumber}</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5 text-[#526056]" aria-hidden="true" />
+                    <span>{copy.copyNumber}</span>
+                  </>
+                )}
+              </button>
+            </div>
           )}
         </div>
 

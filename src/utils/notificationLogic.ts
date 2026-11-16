@@ -5,6 +5,7 @@ import type {
   StoreSettings,
 } from '../types/store.ts';
 import { buildWhatsappUrl } from './adminLogic.ts';
+import { getPaymentMethodLabel, PAYMENT_TRANSFER_NUMBER } from './storeLogic.ts';
 
 function escapeHtml(raw: string): string {
   return String(raw)
@@ -25,6 +26,23 @@ export function formatOrderTimestamp(isoDate: string, lang: Language = 'ar'): st
   });
 }
 
+function formatPaymentDetailsLine(order: Order, lang: Language): string {
+  const methodLabel = getPaymentMethodLabel(order.customer.paymentMethod, lang);
+  const transferSuffix =
+    order.customer.paymentMethod === 'vodafone_cash' ||
+    order.customer.paymentMethod === 'instapay'
+      ? lang === 'ar'
+        ? ` (رقم التحويل: ${PAYMENT_TRANSFER_NUMBER})`
+        : ` (Transfer to: ${PAYMENT_TRANSFER_NUMBER})`
+      : '';
+  const refSuffix = order.customer.paymentReference?.trim()
+    ? lang === 'ar'
+      ? ` — مرجع/رقم المحول: ${order.customer.paymentReference.trim()}`
+      : ` — Ref/Sender: ${order.customer.paymentReference.trim()}`
+    : '';
+  return `${methodLabel}${transferSuffix}${refSuffix}`;
+}
+
 export function formatOrderNotificationSummary(
   order: Order,
   settings: StoreSettings
@@ -38,6 +56,8 @@ export function formatOrderNotificationSummary(
     )
     .join('\n');
 
+  const paymentSummary = formatPaymentDetailsLine(order, 'ar');
+
   const lines = [
     `طلب جديد - ${settings.nameAr}`,
     `رقم الطلب: ${order.orderNumber}`,
@@ -45,6 +65,7 @@ export function formatOrderNotificationSummary(
     `العميل: ${order.customer.fullName}`,
     `الهاتف: ${order.customer.phone}`,
     `العنوان: ${fullAddress}`,
+    `طريقة الدفع: ${paymentSummary}`,
     order.customer.instructions
       ? `ملاحظات التوصيل: ${order.customer.instructions}`
       : null,
@@ -52,7 +73,7 @@ export function formatOrderNotificationSummary(
     itemsText,
     `المجموع الفرعي: ${order.subtotal} ج.م`,
     `رسوم التوصيل: ${order.deliveryFee === 0 ? 'مجاني' : `${order.deliveryFee} ج.م`}`,
-    `الإجمالي المطلوب عند الاستلام: ${order.totalAmount} ج.م`,
+    `الإجمالي المطلوب: ${order.totalAmount} ج.م`,
   ].filter(Boolean);
 
   return lines.join('\n');
@@ -64,6 +85,7 @@ export function buildOrderEmailHtml(
 ): string {
   const dateStr = formatOrderTimestamp(order.createdAt, 'ar');
   const fullAddress = `${order.customer.neighborhood} — ${order.customer.address}`;
+  const paymentSummary = formatPaymentDetailsLine(order, 'ar');
 
   const rowsHtml = order.items
     .map(
@@ -91,6 +113,7 @@ export function buildOrderEmailHtml(
         <div><strong>اسم العميل:</strong> ${escapeHtml(order.customer.fullName)}</div>
         <div><strong>رقم الهاتف:</strong> <span dir="ltr">${escapeHtml(order.customer.phone)}</span></div>
         <div><strong>عنوان التوصيل:</strong> ${escapeHtml(fullAddress)}</div>
+        <div><strong>طريقة الدفع:</strong> ${escapeHtml(paymentSummary)}</div>
         ${
           order.customer.instructions
             ? `<div><strong>ملاحظات إضافية:</strong> ${escapeHtml(order.customer.instructions)}</div>`
@@ -118,7 +141,7 @@ export function buildOrderEmailHtml(
           <span>رسوم التوصيل: </span><strong>${order.deliveryFee === 0 ? 'مجاني' : `${order.deliveryFee} ج.م`}</strong>
         </div>
         <div style="display:flex;justify-content:space-between;font-size:17px;color:#0F5E36;padding-top:8px;border-top:1px solid #C9DEC9;">
-          <span><strong>الإجمالي المطلوب (الدفع عند الاستلام):</strong> </span><strong>${order.totalAmount} ج.م</strong>
+          <span><strong>الإجمالي (${escapeHtml(getPaymentMethodLabel(order.customer.paymentMethod, 'ar'))}):</strong> </span><strong>${order.totalAmount} ج.م</strong>
         </div>
       </div>
     </div>
@@ -136,6 +159,7 @@ export function buildCustomerWhatsappOrderUrl(
   const baseUrl = buildWhatsappUrl(whatsappNumber || '+201110688934');
   const dateStr = formatOrderTimestamp(order.createdAt, lang);
   const fullAddress = `${order.customer.neighborhood} — ${order.customer.address}`;
+  const paymentSummary = formatPaymentDetailsLine(order, lang);
   const itemLines = order.items
     .map((item) =>
       lang === 'ar'
@@ -152,6 +176,7 @@ export function buildCustomerWhatsappOrderUrl(
           `الاسم: ${order.customer.fullName}`,
           `الهاتف: ${order.customer.phone}`,
           `العنوان: ${fullAddress}`,
+          `طريقة الدفع: ${paymentSummary}`,
           `المنتجات:`,
           itemLines,
           `الإجمالي: ${order.totalAmount} ج.م`,
@@ -162,6 +187,7 @@ export function buildCustomerWhatsappOrderUrl(
           `Name: ${order.customer.fullName}`,
           `Phone: ${order.customer.phone}`,
           `Address: ${fullAddress}`,
+          `Payment Method: ${paymentSummary}`,
           `Items:`,
           itemLines,
           `Total: ${order.totalAmount} EGP`,

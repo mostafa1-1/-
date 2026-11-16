@@ -136,12 +136,28 @@ test('computeDashboardMetrics aggregates revenue excluding cancelled orders and 
   assert.equal(stats.bestSellingProducts[0].totalQuantity, 3);
 });
 
-test('formatOrdersCsv produces UTF-8 BOM CSV with escaped values', () => {
-  const csv = formatOrdersCsv([orders[0]], 'ar');
+test('formatOrdersCsv produces UTF-8 BOM CSV with escaped values and payment details', () => {
+  const csv = formatOrdersCsv(
+    [
+      orders[0],
+      {
+        ...orders[1],
+        customer: {
+          ...orders[1].customer,
+          paymentMethod: 'vodafone_cash',
+          paymentReference: 'REF-01099887766',
+        },
+      },
+    ],
+    'ar'
+  );
   assert.ok(csv.startsWith('\uFEFF'));
   assert.ok(csv.includes('AND-261116-1001'));
   assert.ok(csv.includes('أحمد علي'));
   assert.ok(csv.includes('تم التسليم'));
+  assert.ok(csv.includes('طريقة الدفع'));
+  assert.ok(csv.includes('فودافون كاش'));
+  assert.ok(csv.includes('REF-01099887766'));
 });
 
 test('buildWhatsappUrl normalizes Egyptian numbers properly', () => {

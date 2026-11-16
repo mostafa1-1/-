@@ -1,6 +1,7 @@
 import { asc, desc, eq, inArray } from 'drizzle-orm';
 import crypto from 'node:crypto';
-import { db } from './index.ts';
+import { Pool } from 'pg';
+import { db, pool } from './index.ts';
 import {
   adminAllowlist,
   categories,
@@ -20,15 +21,92 @@ import type {
   Order,
   OrderNotificationRecord,
   OrderStatus,
+  PaymentMethod,
   Product,
   StoreSettings,
 } from '../types/store.ts';
 import { buildWhatsappUrl, type ProductInputPayload } from '../utils/adminLogic.ts';
-import { generateOrderNumber, getEffectivePrice, validateCheckoutForm } from '../utils/storeLogic.ts';
+import {
+  generateOrderNumber,
+  getEffectivePrice,
+  isValidPaymentMethod,
+  validateCheckoutForm,
+} from '../utils/storeLogic.ts';
 import { dispatchNewOrderNotifications } from '../services/notifications.ts';
 
 let seedPromise: Promise<void> | null = null;
 let seeded = false;
+
+async function ensureOrdersSchemaAligned(): Promise<void> {
+  try {
+    const colCheck = await pool.query<{ column_name: string }>(
+      `SELECT column_name
+       FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = 'orders'
+         AND column_name IN ('idempotency_key', 'payment_method', 'payment_reference')`
+    );
+    const present = new Set(colCheck.rows.map((r) => r.column_name));
+    const missingIdempotency = !present.has('idempotency_key');
+    const missingPaymentMethod = !present.has('payment_method');
+    const missingPaymentRef = !present.has('payment_reference');
+
+    if (!missingIdempotency && !missingPaymentMethod && !missingPaymentRef) {
+      return;
+    }
+
+    const statements: string[] = [];
+    if (missingIdempotency) {
+      statements.push(
+        `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "idempotency_key" text;`,
+        `CREATE UNIQUE INDEX IF NOT EXISTS "orders_idempotency_key_unique" ON "orders" ("idempotency_key");`
+      );
+    }
+    if (missingPaymentMethod) {
+      statements.push(
+        `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "payment_method" text NOT NULL DEFAULT 'cod';`
+      );
+    }
+    if (missingPaymentRef) {
+      statements.push(
+        `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "payment_reference" text NOT NULL DEFAULT '';`
+      );
+    }
+
+    const ddlPool =
+      process.env.SQL_ADMIN_USER && process.env.SQL_ADMIN_PASSWORD
+        ? new Pool({
+            host: process.env.SQL_HOST,
+            user: process.env.SQL_ADMIN_USER,
+            password: process.env.SQL_ADMIN_PASSWORD,
+            database: process.env.SQL_DB_NAME,
+            max: 2,
+            connectionTimeoutMillis: 10000,
+          })
+        : null;
+
+    try {
+      const targetPool = ddlPool || pool;
+      for (const sql of statements) {
+        await targetPool.query(sql);
+      }
+      console.log('Synchronized missing orders columns:', {
+        missingIdempotency,
+        missingPaymentMethod,
+        missingPaymentRef,
+      });
+    } finally {
+      if (ddlPool) {
+        await ddlPool.end();
+      }
+    }
+  } catch (err) {
+    console.warn(
+      'Unable to auto-align orders columns at startup (run drizzle-kit push if needed):',
+      err instanceof Error ? err.message : err
+    );
+  }
+}
 
 export async function ensureInitialSeed(): Promise<void> {
   if (seeded) return;
@@ -36,6 +114,8 @@ export async function ensureInitialSeed(): Promise<void> {
 
   seedPromise = (async () => {
     try {
+      await ensureOrdersSchemaAligned();
+
       const existingSettings = await db
         .select({ id: storeSettings.id })
         .from(storeSettings)
@@ -219,7 +299,10 @@ function mapOrderRow(row: typeof orders.$inferSelect): Order {
       neighborhood: row.neighborhood,
       address: row.address,
       instructions: row.instructions,
-      paymentMethod: 'cod',
+      paymentMethod: isValidPaymentMethod(row.paymentMethod)
+        ? (row.paymentMethod as PaymentMethod)
+        : 'cod',
+      paymentReference: row.paymentReference || '',
     },
     items: row.items,
     subtotal: row.subtotal,
@@ -270,22 +353,19 @@ export async function createCustomerOrder(payload: {
   idempotencyKey?: string;
 }): Promise<Order> {
   await ensureInitialSeed();
-  const lang = payload.lang === 'en' ? 'en' : 'ar';
+  const lang = payload?.lang === 'en' ? 'en' : 'ar';
+
+  if (!payload || !payload.customer || typeof payload.customer !== 'object') {
+    throw Object.assign(
+      new Error(lang === 'ar' ? 'بيانات العميل مطلوبة' : 'Customer details are required'),
+      { statusCode: 400 }
+    );
+  }
+
   const cleanIdempotencyKey =
     typeof payload.idempotencyKey === 'string' && payload.idempotencyKey.trim()
       ? payload.idempotencyKey.trim().slice(0, 128)
       : null;
-
-  if (cleanIdempotencyKey) {
-    const existingOrder = await db
-      .select()
-      .from(orders)
-      .where(eq(orders.idempotencyKey, cleanIdempotencyKey))
-      .limit(1);
-    if (existingOrder[0]) {
-      return mapOrderRow(existingOrder[0]);
-    }
-  }
 
   const validationErrors = validateCheckoutForm(payload.customer, lang);
   if (Object.keys(validationErrors).length > 0) {
@@ -301,6 +381,17 @@ export async function createCustomerOrder(payload: {
   }
 
   try {
+    if (cleanIdempotencyKey) {
+      const existingOrder = await db
+        .select()
+        .from(orders)
+        .where(eq(orders.idempotencyKey, cleanIdempotencyKey))
+        .limit(1);
+      if (existingOrder[0]) {
+        return mapOrderRow(existingOrder[0]);
+      }
+    }
+
     let settingsForNotification: StoreSettings = STORE_SETTINGS;
 
     const createdOrder = await db.transaction(async (tx) => {
@@ -424,6 +515,15 @@ export async function createCustomerOrder(payload: {
       const totalAmount = Math.round((subtotal + deliveryFee) * 100) / 100;
       const orderNumber = generateOrderNumber();
 
+      const normalizedPaymentMethod: PaymentMethod = isValidPaymentMethod(
+        payload.customer.paymentMethod
+      )
+        ? payload.customer.paymentMethod
+        : 'cod';
+      const normalizedPaymentRef = (payload.customer.paymentReference || '')
+        .trim()
+        .slice(0, 80);
+
       const [inserted] = await tx
         .insert(orders)
         .values({
@@ -435,7 +535,8 @@ export async function createCustomerOrder(payload: {
           neighborhood: payload.customer.neighborhood.trim(),
           address: payload.customer.address.trim(),
           instructions: (payload.customer.instructions || '').trim(),
-          paymentMethod: 'cod',
+          paymentMethod: normalizedPaymentMethod,
+          paymentReference: normalizedPaymentRef,
           subtotal,
           deliveryFee,
           totalSavings,

@@ -2,10 +2,50 @@ import type {
   CartItem,
   CheckoutFormInput,
   Language,
+  PaymentMethod,
   Product,
   ProductFilterOptions,
   StoreSettings,
-} from '../types/store';
+} from '../types/store.ts';
+
+export const PAYMENT_TRANSFER_NUMBER = '01110688934';
+
+export const PAYMENT_METHOD_META: Record<
+  PaymentMethod,
+  {
+    ar: string;
+    en: string;
+    badgeClass: string;
+    requiresTransfer: boolean;
+  }
+> = {
+  cod: {
+    ar: 'الدفع نقداً عند الاستلام',
+    en: 'Cash on Delivery',
+    badgeClass: 'bg-[#F1F4F0] text-[#142218] border-[#D4DDD1]',
+    requiresTransfer: false,
+  },
+  vodafone_cash: {
+    ar: 'فودافون كاش',
+    en: 'Vodafone Cash',
+    badgeClass: 'bg-[#FEE2E2] text-[#991B1B] border-[#FECACA]',
+    requiresTransfer: true,
+  },
+  instapay: {
+    ar: 'إنستا باي (InstaPay)',
+    en: 'InstaPay',
+    badgeClass: 'bg-[#EDE9FE] text-[#5B21B6] border-[#DDD6FE]',
+    requiresTransfer: true,
+  },
+};
+
+export function isValidPaymentMethod(value: unknown): value is PaymentMethod {
+  return value === 'cod' || value === 'vodafone_cash' || value === 'instapay';
+}
+
+export function getPaymentMethodLabel(method: PaymentMethod, lang: Language): string {
+  return PAYMENT_METHOD_META[method]?.[lang] ?? PAYMENT_METHOD_META.cod[lang];
+}
 
 export interface CartTotals {
   itemCount: number;
@@ -181,10 +221,10 @@ export function validateCheckoutForm(
   lang: Language
 ): CheckoutValidationErrors {
   const errors: CheckoutValidationErrors = {};
-  const trimmedName = input.fullName.trim();
-  const cleanPhone = input.phone.replace(/[\s\-()]/g, '');
-  const trimmedNeighborhood = input.neighborhood.trim();
-  const trimmedAddress = input.address.trim();
+  const trimmedName = String(input?.fullName || '').trim();
+  const cleanPhone = String(input?.phone || '').replace(/[\s\-()]/g, '');
+  const trimmedNeighborhood = String(input?.neighborhood || '').trim();
+  const trimmedAddress = String(input?.address || '').trim();
 
   if (trimmedName.length < 3) {
     errors.fullName =
@@ -215,6 +255,21 @@ export function validateCheckoutForm(
       lang === 'ar'
         ? 'يرجى إدخال العنوان بالتفصيل (الشارع، رقم العمارة، الدور)'
         : 'Please enter a detailed delivery address (street, building, floor)';
+  }
+
+  if (!isValidPaymentMethod(input.paymentMethod)) {
+    errors.paymentMethod =
+      lang === 'ar'
+        ? 'يرجى اختيار طريقة دفع صحيحة'
+        : 'Please select a valid payment method';
+  }
+
+  const trimmedRef = (input.paymentReference || '').trim();
+  if (trimmedRef.length > 80) {
+    errors.paymentReference =
+      lang === 'ar'
+        ? 'مرجع التحويل طويل جداً (الحد الأقصى 80 حرفاً)'
+        : 'Transfer reference is too long (max 80 characters)';
   }
 
   return errors;

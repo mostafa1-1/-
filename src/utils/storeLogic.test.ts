@@ -7,9 +7,12 @@ import {
   formatEGP,
   generateOrderNumber,
   getEffectivePrice,
+  getPaymentMethodLabel,
+  isValidPaymentMethod,
+  PAYMENT_TRANSFER_NUMBER,
   validateCheckoutForm,
 } from './storeLogic';
-import type { Product, StoreSettings } from '../types/store';
+import type { PaymentMethod, Product, StoreSettings } from '../types/store';
 
 const sampleSettings: StoreSettings = {
   nameAr: 'سوبر ماركت الأندلس',
@@ -184,4 +187,52 @@ test('currency formatting and order number generator return expected formats', (
   assert.equal(formatEGP(120, 'ar'), '120 ج.م');
   assert.equal(formatEGP(120, 'en'), '120 EGP');
   assert.match(generateOrderNumber(new Date('2026-11-16T10:00:00Z')), /^AND-261116-\d{4}$/);
+});
+
+test('payment method helpers validate cod, vodafone_cash, and instapay and provide AR/EN labels', () => {
+  assert.equal(PAYMENT_TRANSFER_NUMBER, '01110688934');
+  assert.equal(isValidPaymentMethod('cod'), true);
+  assert.equal(isValidPaymentMethod('vodafone_cash'), true);
+  assert.equal(isValidPaymentMethod('instapay'), true);
+  assert.equal(isValidPaymentMethod('credit_card'), false);
+
+  assert.equal(getPaymentMethodLabel('vodafone_cash', 'ar'), 'فودافون كاش');
+  assert.equal(getPaymentMethodLabel('instapay', 'en'), 'InstaPay');
+
+  const validVodafone = validateCheckoutForm(
+    {
+      fullName: 'أحمد محمود',
+      phone: '01110688934',
+      neighborhood: 'المعادي',
+      address: 'شارع 9، عمارة 14، الدور الثالث',
+      instructions: '',
+      paymentMethod: 'vodafone_cash',
+      paymentReference: '01012345678',
+    },
+    'ar'
+  );
+  assert.deepEqual(validVodafone, {});
+
+  const invalidMethodErrors = validateCheckoutForm(
+    {
+      fullName: 'أحمد محمود',
+      phone: '01110688934',
+      neighborhood: 'المعادي',
+      address: 'شارع 9، عمارة 14، الدور الثالث',
+      instructions: '',
+      paymentMethod: 'invalid' as PaymentMethod,
+      paymentReference: 'x'.repeat(85),
+    },
+    'en'
+  );
+  assert.ok(invalidMethodErrors.paymentMethod);
+  assert.ok(invalidMethodErrors.paymentReference);
+
+  const partialPayloadErrors = validateCheckoutForm(
+    {} as unknown as Parameters<typeof validateCheckoutForm>[0],
+    'en'
+  );
+  assert.ok(partialPayloadErrors.fullName);
+  assert.ok(partialPayloadErrors.phone);
+  assert.ok(partialPayloadErrors.paymentMethod);
 });

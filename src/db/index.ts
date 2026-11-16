@@ -1,6 +1,9 @@
+import dotenv from 'dotenv';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import * as schema from './schema.ts';
+
+dotenv.config();
 
 declare global {
   var _postgresPool: Pool | undefined;
@@ -24,6 +27,6 @@ export const createPool = () => {
   return global._postgresPool;
 };
 
-const pool = createPool();
+export const pool = createPool();
 
 export const db = drizzle(pool, { schema });

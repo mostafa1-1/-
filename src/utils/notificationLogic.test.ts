@@ -119,3 +119,43 @@ test('getNotificationChannelCapabilities accurately reflects configured provider
   assert.equal(resendAndWa.emailProvider, 'resend');
   assert.equal(resendAndWa.whatsappCloudConfigured, true);
 });
+
+test('notifications include Vodafone Cash / InstaPay transfer number 01110688934 and reference', () => {
+  const instapayOrder: Order = {
+    ...sampleOrder,
+    orderNumber: 'AND-261116-9099',
+    customer: {
+      ...sampleOrder.customer,
+      paymentMethod: 'instapay',
+      paymentReference: 'IPA-778899',
+    },
+  };
+
+  const summary = formatOrderNotificationSummary(instapayOrder, sampleSettings);
+  assert.match(summary, /إنستا باي/);
+  assert.match(summary, /01110688934/);
+  assert.match(summary, /IPA-778899/);
+
+  const html = buildOrderEmailHtml(instapayOrder, sampleSettings);
+  assert.ok(html.includes('إنستا باي'));
+  assert.ok(html.includes('01110688934'));
+  assert.ok(html.includes('IPA-778899'));
+
+  const waUrl = buildCustomerWhatsappOrderUrl(
+    '+201110688934',
+    {
+      ...sampleOrder,
+      customer: {
+        ...sampleOrder.customer,
+        paymentMethod: 'vodafone_cash',
+        paymentReference: '01012345678',
+      },
+    },
+    sampleSettings,
+    'en'
+  );
+  const decoded = decodeURIComponent(waUrl.split('?text=')[1]);
+  assert.match(decoded, /Vodafone Cash/);
+  assert.match(decoded, /01110688934/);
+  assert.match(decoded, /01012345678/);
+});

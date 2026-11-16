@@ -3,7 +3,11 @@ import { Download, Eye, Mail, MessageCircle, Printer, Search, X } from 'lucide-r
 import type { Order, OrderNotificationRecord, OrderStatus } from '../../types/store';
 import { adminApi } from '../../utils/adminApi';
 import { formatOrdersCsv, ORDER_STATUS_META } from '../../utils/adminLogic';
-import { formatEGP } from '../../utils/storeLogic';
+import {
+  formatEGP,
+  getPaymentMethodLabel,
+  PAYMENT_METHOD_META,
+} from '../../utils/storeLogic';
 
 interface AdminOrdersSectionProps {
   orders: Order[];
@@ -143,6 +147,7 @@ export function AdminOrdersSection({
                   <th className="py-3 px-4 text-start font-semibold">العميل</th>
                   <th className="py-3 px-4 text-start font-semibold">الهاتف والعنوان</th>
                   <th className="py-3 px-4 text-start font-semibold">الأصناف</th>
+                  <th className="py-3 px-4 text-start font-semibold">طريقة الدفع</th>
                   <th className="py-3 px-4 text-start font-semibold">الإجمالي</th>
                   <th className="py-3 px-4 text-start font-semibold">تحديث الحالة</th>
                   <th className="py-3 px-4 text-start font-semibold">التفاصيل</th>
@@ -171,6 +176,20 @@ export function AdminOrdersSection({
                     <td className="py-3 px-4 text-xs text-[#526056] tabular-nums">
                       {order.items.reduce((sum, i) => sum + i.quantity, 0)} قطعة (
                       {order.items.length} صنف)
+                    </td>
+                    <td className="py-3 px-4">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-semibold whitespace-nowrap ${
+                          PAYMENT_METHOD_META[order.customer.paymentMethod].badgeClass
+                        }`}
+                      >
+                        {getPaymentMethodLabel(order.customer.paymentMethod, 'ar')}
+                      </span>
+                      {order.customer.paymentReference && (
+                        <div className="text-[11px] text-[#526056] mt-0.5 tabular-nums" dir="ltr">
+                          {order.customer.paymentReference}
+                        </div>
+                      )}
                     </td>
                     <td className="py-3 px-4 font-bold text-[#0F5E36] tabular-nums">
                       {formatEGP(order.totalAmount, 'ar')}
@@ -256,6 +275,21 @@ export function AdminOrdersSection({
                 <strong>العنوان:</strong> {selectedOrder.customer.neighborhood} —{' '}
                 {selectedOrder.customer.address}
               </p>
+              <p>
+                <strong>طريقة الدفع:</strong>{' '}
+                <span
+                  className={`inline-flex items-center px-2 py-0.5 rounded border text-xs font-semibold ${
+                    PAYMENT_METHOD_META[selectedOrder.customer.paymentMethod].badgeClass
+                  }`}
+                >
+                  {getPaymentMethodLabel(selectedOrder.customer.paymentMethod, 'ar')}
+                </span>
+                {selectedOrder.customer.paymentReference ? (
+                  <span className="ms-2 text-xs text-[#526056]">
+                    (المرجع: <strong dir="ltr">{selectedOrder.customer.paymentReference}</strong>)
+                  </span>
+                ) : null}
+              </p>
               {selectedOrder.customer.instructions && (
                 <p>
                   <strong>ملاحظات:</strong> {selectedOrder.customer.instructions}
@@ -302,7 +336,9 @@ export function AdminOrdersSection({
                   </span>
                 </div>
                 <div className="flex justify-between font-bold text-base text-[#0F5E36] pt-1 border-t border-[#E2E7E0]">
-                  <span>الإجمالي المستحق عند الاستلام</span>
+                  <span>
+                    الإجمالي ({getPaymentMethodLabel(selectedOrder.customer.paymentMethod, 'ar')})
+                  </span>
                   <span className="tabular-nums">
                     {formatEGP(selectedOrder.totalAmount, 'ar')}
                   </span>

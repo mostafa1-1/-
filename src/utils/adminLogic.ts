@@ -6,7 +6,8 @@ import type {
   OrderStatus,
   Product,
   StoreSettings,
-} from '../types/store';
+} from '../types/store.ts';
+import { getPaymentMethodLabel } from './storeLogic.ts';
 
 export const ORDER_STATUS_META: Record<
   OrderStatus,
@@ -152,6 +153,8 @@ export function formatOrdersCsv(orders: Order[], lang: Language): string {
           'رقم الطلب',
           'التاريخ',
           'الحالة',
+          'طريقة الدفع',
+          'مرجع التحويل',
           'اسم العميل',
           'الهاتف',
           'المنطقة',
@@ -165,6 +168,8 @@ export function formatOrdersCsv(orders: Order[], lang: Language): string {
           'Order Number',
           'Date',
           'Status',
+          'Payment Method',
+          'Payment Reference',
           'Customer Name',
           'Phone',
           'Neighborhood',
@@ -187,6 +192,8 @@ export function formatOrdersCsv(orders: Order[], lang: Language): string {
       order.orderNumber,
       order.createdAt,
       getOrderStatusLabel(order.status, lang),
+      getPaymentMethodLabel(order.customer.paymentMethod, lang),
+      order.customer.paymentReference || '',
       order.customer.fullName,
       order.customer.phone,
       order.customer.neighborhood,

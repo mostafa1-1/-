@@ -106,6 +106,7 @@ export const orders = pgTable('orders', {
   address: text('address').notNull(),
   instructions: text('instructions').notNull().default(''),
   paymentMethod: text('payment_method').notNull().default('cod'),
+  paymentReference: text('payment_reference').notNull().default(''),
   subtotal: doublePrecision('subtotal').notNull(),
   deliveryFee: doublePrecision('delivery_fee').notNull(),
   totalSavings: doublePrecision('total_savings').notNull().default(0),

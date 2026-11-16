@@ -71,13 +71,16 @@ export interface StoreSettings {
   emailNotificationsEnabled?: boolean;
 }
 
+export type PaymentMethod = 'cod' | 'vodafone_cash' | 'instapay';
+
 export interface CheckoutFormInput {
   fullName: string;
   phone: string;
   neighborhood: string;
   address: string;
   instructions: string;
-  paymentMethod: 'cod';
+  paymentMethod: PaymentMethod;
+  paymentReference?: string;
 }
 
 export type OrderStatus =
