@@ -1,0 +1,8 @@
+{
+  "name": "Al Andalus Supermarket | سوبر ماركت الأندلس",
+  "description": "سوبر ماركت الأندلس - تسوق أونلاين لجميع احتياجاتك اليومية من البقالة والخضروات والفواكه والألبان والمشروبات والمنظفات، مع خدمة توصيل سريعة وسهلة إلى باب المنزل. اطلب الآن عبر الإنترنت أو واتساب.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
