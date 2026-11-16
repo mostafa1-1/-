@@ -46,7 +46,7 @@ export function AboutPage({ lang, settings, onBrowseShop }: AboutPageProps) {
         </div>
 
         <div className="lg:col-span-6">
-          <div className="aspect-[16/10] rounded-2xl overflow-hidden border border-[#E2E7E0] bg-[#F1F4F0]">
+          <div className="aspect-video rounded-2xl overflow-hidden border border-[#E2E7E0] bg-white">
             <SmartImage
               src={HERO_IMAGE}
               alt={copy.brandName}

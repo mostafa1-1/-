@@ -1,6 +1,6 @@
 import type { Category, Product, StoreSettings } from '../types/store';
 
-export const HERO_IMAGE = '/src/assets/images/hero_andalus_market_1794823232031.jpg';
+export const HERO_IMAGE = '/assets/aistudio/image_f0a55696.png';
 
 const IMG = {
   fruitsVeg: '/src/assets/images/prod_fruits_vegetables_1794823232575.jpg',

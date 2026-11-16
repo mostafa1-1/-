@@ -74,7 +74,7 @@ export function HomePage({
       {/* SECTION 1: Storefront Hero Split */}
       <section className="bg-white border-b border-[#E2E7E0]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10 lg:py-14">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-stretch">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center">
             {/* Editorial Copy + Search + Primary CTA */}
             <div className="lg:col-span-6 flex flex-col justify-center space-y-6">
               <p className="text-sm font-semibold text-[#0F5E36]">{copy.heroKicker}</p>
@@ -140,14 +140,14 @@ export function HomePage({
               </div>
             </div>
 
-            {/* Hero Photography */}
+            {/* Hero Banner */}
             <div className="lg:col-span-6">
-              <div className="relative h-full min-h-[260px] sm:min-h-[340px] rounded-2xl overflow-hidden bg-[#F1F4F0] border border-[#E2E7E0]">
+              <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-white border border-[#E2E7E0] shadow-xs">
                 <SmartImage
                   src={HERO_IMAGE}
                   alt={copy.brandName}
                   fallbackLabel={copy.brandName}
-                  className="w-full h-full lg:h-full object-cover"
+                  className="w-full h-full object-cover"
                 />
               </div>
             </div>
@@ -172,7 +172,7 @@ export function HomePage({
                 <Clock className="w-5 h-5" aria-hidden="true" />
               </div>
               <div>
-                <p className="text-lg font-bold text-[#142218] tabular-nums">
+                <p className="text-sm sm:text-base font-bold text-[#142218]">
                   {copy.metricDeliveryValue}
                 </p>
                 <p className="text-xs text-[#526056]">{copy.metricDelivery}</p>
