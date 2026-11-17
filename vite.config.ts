@@ -99,12 +99,20 @@ export default defineConfig(() => {
         },
       },
     },
-    server: {
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modify—file watching is disabled to prevent flickering during agent edits.
-      hmr: process.env.DISABLE_HMR !== 'true',
-      // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
-      watch: process.env.DISABLE_HMR === 'true' ? null : {},
-    },
+    server: (() => {
+      const isCloudProxy = Boolean(
+        process.env.K_SERVICE ||
+          process.env.CLOUD_RUN_EXECUTION ||
+          (process.env.APP_URL && process.env.APP_URL.startsWith('https://'))
+      );
+      const hmrDisabled = process.env.DISABLE_HMR === 'true' || isCloudProxy;
+      return {
+        // HMR is disabled in AI Studio via DISABLE_HMR env var or behind the Cloud Run HTTPS proxy
+        // to prevent unhandled WebSocket errors and flickering during agent edits.
+        hmr: hmrDisabled ? false : { clientPort: 443 },
+        // Disable file watching when HMR is disabled to save CPU during agent edits.
+        watch: hmrDisabled ? null : {},
+      };
+    })(),
   };
 });

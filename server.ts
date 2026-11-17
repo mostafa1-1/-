@@ -467,8 +467,17 @@ async function startServer() {
 
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
+    const isCloudProxy = Boolean(
+      process.env.K_SERVICE ||
+        process.env.CLOUD_RUN_EXECUTION ||
+        (process.env.APP_URL && process.env.APP_URL.startsWith('https://'))
+    );
+    const hmrDisabled = process.env.DISABLE_HMR === 'true' || isCloudProxy;
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: hmrDisabled ? false : { clientPort: 443 },
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);

@@ -460,7 +460,7 @@ export function AdminSettingsSection({
             <p className="text-xs text-[#526056] leading-relaxed">
               {capabilities?.emailConfigured
                 ? `يرسل تلقائياً إلى ${capabilities.ownerNotificationEmail}`
-                : 'أضف RESEND_API_KEY أو بيانات SMTP (SMTP_HOST, SMTP_USER, SMTP_PASS) في Secrets لتفعيل الإرسال التلقائي.'}
+                : 'أضف GMAIL_USER و GMAIL_APP_PASSWORD (أو RESEND_API_KEY أو بيانات SMTP) في Secrets لتفعيل الإرسال التلقائي.'}
             </p>
           </div>
 
