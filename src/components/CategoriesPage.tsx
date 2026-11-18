@@ -62,7 +62,7 @@ export function CategoriesPage({
                 </div>
 
                 <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#0F5E36] pt-2">
-                  <span>{lang === 'ar' ? 'تصفح القسم' : 'Browse aisle'}</span>
+                  <span>{lang === 'ar' ? 'شوف القسم' : 'Browse aisle'}</span>
                   <ArrowIcon className="w-3.5 h-3.5" aria-hidden="true" />
                 </span>
               </div>

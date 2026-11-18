@@ -1,4 +1,4 @@
-import { asc, desc, eq, inArray } from 'drizzle-orm';
+import { asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import crypto from 'node:crypto';
 import { Pool } from 'pg';
 import { db, pool } from './index.ts';
@@ -10,6 +10,7 @@ import {
   orders,
   products,
   storeSettings,
+  users,
   type OrderItemDb,
 } from './schema.ts';
 import { CATEGORIES, INITIAL_PRODUCTS, STORE_SETTINGS } from '../data/catalog.ts';
@@ -32,7 +33,6 @@ import {
   isValidPaymentMethod,
   validateCheckoutForm,
 } from '../utils/storeLogic.ts';
-import { dispatchNewOrderNotifications } from '../services/notifications.ts';
 
 let seedPromise: Promise<void> | null = null;
 let seeded = false;
@@ -351,7 +351,7 @@ export async function createCustomerOrder(payload: {
   items: { productId: string; quantity: number }[];
   lang?: 'ar' | 'en';
   idempotencyKey?: string;
-}): Promise<Order> {
+}): Promise<{ order: Order; isNew: boolean; settings: StoreSettings }> {
   await ensureInitialSeed();
   const lang = payload?.lang === 'en' ? 'en' : 'ar';
 
@@ -388,7 +388,11 @@ export async function createCustomerOrder(payload: {
         .where(eq(orders.idempotencyKey, cleanIdempotencyKey))
         .limit(1);
       if (existingOrder[0]) {
-        return mapOrderRow(existingOrder[0]);
+        return {
+          order: mapOrderRow(existingOrder[0]),
+          isNew: false,
+          settings: STORE_SETTINGS,
+        };
       }
     }
 
@@ -548,14 +552,11 @@ export async function createCustomerOrder(payload: {
       return { order: mapOrderRow(inserted), isNew: true };
     });
 
-    if (createdOrder.isNew) {
-      // Trigger real-time WebSocket push, Email, and WhatsApp Cloud notifications asynchronously-safe
-      await dispatchNewOrderNotifications(createdOrder.order, settingsForNotification).catch(
-        (err) => console.error('Order notification dispatch error:', err)
-      );
-    }
-
-    return createdOrder.order;
+    return {
+      order: createdOrder.order,
+      isNew: createdOrder.isNew,
+      settings: settingsForNotification,
+    };
   } catch (error: unknown) {
     const pgCode =
       error && typeof error === 'object'
@@ -570,7 +571,11 @@ export async function createCustomerOrder(payload: {
         .where(eq(orders.idempotencyKey, cleanIdempotencyKey))
         .limit(1);
       if (existing[0]) {
-        return mapOrderRow(existing[0]);
+        return {
+          order: mapOrderRow(existing[0]),
+          isNew: false,
+          settings: STORE_SETTINGS,
+        };
       }
     }
 
@@ -1078,5 +1083,28 @@ export async function removeAdminAllowlistEmail(email: string): Promise<string[]
   } catch (error) {
     console.error('Failed to remove admin allowlist email:', error);
     throw new Error('Failed to remove admin email.', { cause: error });
+  }
+}
+
+export async function getAllOwnerAdminEmails(): Promise<{
+  roleEmails: string[];
+  allowlistEmails: string[];
+}> {
+  await ensureInitialSeed();
+  try {
+    const [roleRows, allowlistRows] = await Promise.all([
+      db
+        .select({ email: users.email })
+        .from(users)
+        .where(sql`lower(${users.role}) in ('owner', 'admin')`),
+      db.select({ email: adminAllowlist.email }).from(adminAllowlist),
+    ]);
+    return {
+      roleEmails: roleRows.map((r) => r.email),
+      allowlistEmails: allowlistRows.map((r) => r.email),
+    };
+  } catch (error) {
+    console.error('Failed to load owner/admin notification recipients:', error);
+    return { roleEmails: [], allowlistEmails: [] };
   }
 }

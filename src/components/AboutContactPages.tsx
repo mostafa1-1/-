@@ -24,7 +24,7 @@ export function AboutPage({ lang, settings, onBrowseShop }: AboutPageProps) {
           <p className="text-base text-[#0F5E36] font-semibold">{copy.aboutSubtitle}</p>
           <p className="text-sm sm:text-base text-[#4A584E] leading-relaxed">
             {lang === 'ar'
-              ? 'في سوبر ماركت الأندلس نؤمن بأن مقاضي البيت اليومية تستحق أعلى معايير الجودة والاهتمام. منذ انطلاقنا ونحن نوفر لعملائنا تشكيلة شاملة من الخضروات والفواكه الطازجة، اللحوم البلدية، الألبان، والمواد التموينية والمنزلية بأسعار عادلة وخدمة توصيل موثوقة.'
+              ? 'في سوبر ماركت الأندلس بنهتم بكل تفصيلة في طلبات بيتك اليومية. بنوفرلك خضار وفواكه طازة، لحوم بلدي، ألبان، ومستلزمات البيت بأسعار على قد الإيد وتوصيل سريع لحد بابك.'
               : 'At Al Andalus Supermarket, we believe everyday groceries deserve uncompromising quality and care. We bring families farm-fresh produce, local meats, dairy, and household essentials at transparent prices with dependable neighborhood delivery.'}
           </p>
           <div className="flex flex-wrap gap-3 pt-2">
@@ -65,15 +65,15 @@ export function AboutPage({ lang, settings, onBrowseShop }: AboutPageProps) {
           },
           {
             icon: Truck,
-            title: copy.metricDelivery,
+            title: copy.metricDeliveryValue,
             desc:
               lang === 'ar'
-                ? 'توصيل سريع مبرد ومرتب يحافظ على سلامة المنتجات حتى باب بيتك.'
+                ? 'توصيل سريع ومحافظ على طزاجة كل الطلبات لحد باب بيتك.'
                 : 'Temperature-safe express delivery arranged neatly to your door.',
           },
           {
             icon: Clock,
-            title: lang === 'ar' ? 'ساعات العمل' : 'Working Hours',
+            title: lang === 'ar' ? 'مواعيد الشغل' : 'Working Hours',
             desc: lang === 'ar' ? settings.workingHoursAr : settings.workingHoursEn,
           },
         ].map((card) => {
@@ -104,24 +104,61 @@ export function ContactPage({ lang, settings }: ContactPageProps) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [message, setMessage] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     if (name.trim().length < 2 || phone.trim().length < 8 || message.trim().length < 5) {
+      setSubmitted(false);
       setError(
         lang === 'ar'
-          ? 'يرجى كتابة الاسم ورقم الهاتف والرسالة بشكل صحيح.'
+          ? 'من فضلك اكتب اسمك ورقم تليفونك ورسالتك بشكل صحيح.'
           : 'Please fill in your name, phone number, and message.'
       );
       return;
     }
+
     setError('');
-    setSubmitted(true);
-    setName('');
-    setPhone('');
-    setMessage('');
+    setSubmitting(true);
+    try {
+      const response = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim(),
+          phone: phone.trim(),
+          message: message.trim(),
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setSubmitted(false);
+        setError(
+          (data as { error?: string }).error ||
+            (lang === 'ar'
+              ? 'معلش حصلت مشكلة في إرسال رسالتك.. جرب تاني أو كلمنا على التليفون.'
+              : 'Could not send your message. Please try again.')
+        );
+        return;
+      }
+
+      setSubmitted(true);
+      setName('');
+      setPhone('');
+      setMessage('');
+    } catch {
+      setSubmitted(false);
+      setError(
+        lang === 'ar'
+          ? 'مفيش اتصال بالسيرفر دلوقتي.. جرب تاني أو كلمنا مباشرة.'
+          : 'Network error while sending message. Please try again.'
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -156,7 +193,7 @@ export function ContactPage({ lang, settings }: ContactPageProps) {
               <MessageCircle className="w-5 h-5 text-[#0F5E36] mt-0.5 shrink-0" />
               <div>
                 <h2 className="text-sm font-bold text-[#142218]">
-                  {lang === 'ar' ? 'الطلب المباشر عبر واتساب' : 'WhatsApp Order Desk'}
+                  {lang === 'ar' ? 'اطلب مباشرة على واتساب' : 'WhatsApp Order Desk'}
                 </h2>
                 <a
                   href={settings.whatsappUrl}
@@ -173,7 +210,7 @@ export function ContactPage({ lang, settings }: ContactPageProps) {
               <MapPin className="w-5 h-5 text-[#0F5E36] mt-0.5 shrink-0" />
               <div>
                 <h2 className="text-sm font-bold text-[#142218]">
-                  {lang === 'ar' ? 'العنوان ونطاق التغطية' : 'Location & Coverage'}
+                  {lang === 'ar' ? 'عنواننا ومناطق التوصيل' : 'Location & Coverage'}
                 </h2>
                 <p className="text-sm text-[#526056] mt-1">
                   {lang === 'ar' ? settings.addressAr : settings.addressEn}
@@ -185,7 +222,7 @@ export function ContactPage({ lang, settings }: ContactPageProps) {
               <Clock className="w-5 h-5 text-[#0F5E36] mt-0.5 shrink-0" />
               <div>
                 <h2 className="text-sm font-bold text-[#142218]">
-                  {lang === 'ar' ? 'مواعيد العمل' : 'Opening Hours'}
+                  {lang === 'ar' ? 'مواعيد الشغل' : 'Opening Hours'}
                 </h2>
                 <p className="text-sm text-[#526056] mt-1">
                   {lang === 'ar' ? settings.workingHoursAr : settings.workingHoursEn}
@@ -197,15 +234,18 @@ export function ContactPage({ lang, settings }: ContactPageProps) {
 
         <div className="lg:col-span-7 bg-white border border-[#E2E7E0] rounded-2xl p-6 sm:p-8">
           <h2 className="font-display text-xl font-bold text-[#142218] mb-4">
-            {lang === 'ar' ? 'أرسل لنا رسالة أو اقتراح' : 'Send Us a Message'}
+            {lang === 'ar' ? 'ابعتلنا رسالة أو اقتراح' : 'Send Us a Message'}
           </h2>
 
           {submitted && (
-            <div className="mb-5 p-4 rounded-xl bg-[#EEF5EE] border border-[#C9DEC9] flex items-center gap-2.5 text-sm text-[#0F5E36] font-medium">
+            <div
+              data-testid="contact-success-banner"
+              className="mb-5 p-4 rounded-xl bg-[#EEF5EE] border border-[#C9DEC9] flex items-center gap-2.5 text-sm text-[#0F5E36] font-medium"
+            >
               <CheckCircle2 className="w-5 h-5 shrink-0" />
               <span>
                 {lang === 'ar'
-                  ? 'تم استلام رسالتك بنجاح! سيتواصل معك فريق خدمة العملاء قريباً.'
+                  ? 'رسالتك وصلتنا يا فندم! هنكلمك في أسرع وقت.'
                   : 'Your message has been received! Our customer care team will reach out shortly.'}
               </span>
             </div>
@@ -248,7 +288,7 @@ export function ContactPage({ lang, settings }: ContactPageProps) {
 
             <div className="space-y-1.5">
               <label htmlFor="contact-message" className="block text-sm font-semibold text-[#142218]">
-                {lang === 'ar' ? 'الرسالة' : 'Message'}
+                {lang === 'ar' ? 'رسالتك' : 'Message'}
               </label>
               <textarea
                 id="contact-message"
@@ -261,9 +301,16 @@ export function ContactPage({ lang, settings }: ContactPageProps) {
 
             <button
               type="submit"
-              className="px-6 py-3 rounded-xl bg-[#0F5E36] hover:bg-[#0B4A2A] text-white text-sm font-bold transition-colors cursor-pointer"
+              disabled={submitting}
+              className="px-6 py-3 rounded-xl bg-[#0F5E36] hover:bg-[#0B4A2A] disabled:bg-[#9EB4A7] text-white text-sm font-bold transition-colors cursor-pointer disabled:cursor-not-allowed"
             >
-              {lang === 'ar' ? 'إرسال الرسالة' : 'Send Message'}
+              {submitting
+                ? lang === 'ar'
+                  ? 'بنبعت رسالتك...'
+                  : 'Sending...'
+                : lang === 'ar'
+                ? 'ابعت الرسالة'
+                : 'Send Message'}
             </button>
           </form>
         </div>

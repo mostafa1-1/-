@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildProductShareData,
+  buildProductUrl,
+  buildWhatsAppProductShareUrl,
   calculateCartTotals,
   calculateDiscountPercent,
   filterAndSortProducts,
@@ -236,3 +239,40 @@ test('payment method helpers validate cod, vodafone_cash, and instapay and provi
   assert.ok(partialPayloadErrors.phone);
   assert.ok(partialPayloadErrors.paymentMethod);
 });
+
+test('buildProductUrl, buildProductShareData, and buildWhatsAppProductShareUrl include localized product name and current URL', () => {
+  assert.equal(
+    buildProductUrl('fresh tomatoes', 'https://andalus.example.com/'),
+    'https://andalus.example.com/product/fresh%20tomatoes'
+  );
+
+  // Full current product URL is preserved as-is
+  assert.equal(
+    buildProductUrl('p1', 'https://andalus.example.com/product/p1?ref=wa'),
+    'https://andalus.example.com/product/p1?ref=wa'
+  );
+
+  const arShareData = buildProductShareData(
+    sampleProducts[0],
+    'ar',
+    'https://andalus.example.com/product/p1'
+  );
+  assert.equal(arShareData.title, sampleProducts[0].nameAr);
+  assert.equal(arShareData.url, 'https://andalus.example.com/product/p1');
+  assert.ok(arShareData.text.includes(sampleProducts[0].nameAr));
+  assert.ok(arShareData.whatsappUrl.startsWith('https://wa.me/?text='));
+
+  const arDecoded = decodeURIComponent(arShareData.whatsappUrl.slice('https://wa.me/?text='.length));
+  assert.ok(arDecoded.includes(sampleProducts[0].nameAr));
+  assert.ok(arDecoded.includes('https://andalus.example.com/product/p1'));
+
+  const enShareUrl = buildWhatsAppProductShareUrl(
+    sampleProducts[0],
+    'en',
+    'https://andalus.example.com'
+  );
+  const enDecoded = decodeURIComponent(enShareUrl.slice('https://wa.me/?text='.length));
+  assert.ok(enDecoded.includes(sampleProducts[0].nameEn));
+  assert.ok(enDecoded.includes('https://andalus.example.com/product/p1'));
+});
+

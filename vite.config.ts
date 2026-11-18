@@ -35,6 +35,29 @@ function copyUnbundledAssetsPlugin(): Plugin {
   };
 }
 
+function disableHmrClientWebSocketPlugin(): Plugin {
+  return {
+    name: 'disable-hmr-client-websocket',
+    apply: 'serve',
+    enforce: 'post',
+    transform(code, id) {
+      const normalizedId = id.split('?')[0].replace(/\\/g, '/');
+      if (
+        normalizedId.endsWith('vite/dist/client/client.mjs') ||
+        normalizedId.endsWith('vite/dist/client/bundledDevClient.mjs')
+      ) {
+        return {
+          code: code.replace(
+            'transport.connect(createHMRHandler(handleMessage));',
+            '/* HMR WebSocket disabled */'
+          ),
+          map: null,
+        };
+      }
+    },
+  };
+}
+
 export default defineConfig(() => {
   return {
     base: '/',
@@ -49,7 +72,12 @@ export default defineConfig(() => {
       '**/*.avif',
       '**/*.ico',
     ],
-    plugins: [react(), tailwindcss(), copyUnbundledAssetsPlugin()],
+    plugins: [
+      react(),
+      tailwindcss(),
+      copyUnbundledAssetsPlugin(),
+      disableHmrClientWebSocketPlugin(),
+    ],
     resolve: {
       alias: {
         '@': path.resolve(import.meta.dirname, '.'),
@@ -99,20 +127,13 @@ export default defineConfig(() => {
         },
       },
     },
-    server: (() => {
-      const isCloudProxy = Boolean(
-        process.env.K_SERVICE ||
-          process.env.CLOUD_RUN_EXECUTION ||
-          (process.env.APP_URL && process.env.APP_URL.startsWith('https://'))
-      );
-      const hmrDisabled = process.env.DISABLE_HMR === 'true' || isCloudProxy;
-      return {
-        // HMR is disabled in AI Studio via DISABLE_HMR env var or behind the Cloud Run HTTPS proxy
-        // to prevent unhandled WebSocket errors and flickering during agent edits.
-        hmr: hmrDisabled ? false : { clientPort: 443 },
-        // Disable file watching when HMR is disabled to save CPU during agent edits.
-        watch: hmrDisabled ? null : {},
-      };
-    })(),
+    server: {
+      hmr: false,
+      ws: false,
+      watch: null,
+    },
+    preview: {
+      host: true,
+    },
   };
 });

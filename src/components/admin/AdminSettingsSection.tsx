@@ -1,5 +1,14 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
-import { BellRing, CheckCircle2, Mail, MessageCircle, Plus, Trash2, Upload } from 'lucide-react';
+import {
+  BellRing,
+  CheckCircle2,
+  KeyRound,
+  Mail,
+  MessageCircle,
+  Plus,
+  Trash2,
+  Upload,
+} from 'lucide-react';
 import type {
   NotificationChannelCapabilities,
   OrderNotificationRecord,
@@ -7,6 +16,7 @@ import type {
 } from '../../types/store';
 import { adminApi } from '../../utils/adminApi';
 import { validateSettingsPayload } from '../../utils/adminLogic';
+import type { RequiredNotificationEnvKey } from '../../utils/notificationLogic';
 import { SmartImage } from '../SmartImage';
 
 interface AdminSettingsSectionProps {
@@ -34,6 +44,13 @@ export function AdminSettingsSection({
   const [testResults, setTestResults] = useState<OrderNotificationRecord[] | null>(
     null
   );
+  const [checkingEnv, setCheckingEnv] = useState(false);
+  const [envCheckResult, setEnvCheckResult] = useState<{
+    ok: boolean;
+    status: Record<RequiredNotificationEnvKey, 'LOADED' | 'MISSING'>;
+    missingKeys: string[];
+    checkedAt: string;
+  } | null>(null);
 
   useEffect(() => {
     setForm(settings);
@@ -120,11 +137,44 @@ export function AdminSettingsSection({
       const res = await adminApi.sendTestNotification();
       setTestResults(res.results);
       await onRefresh();
-      onNotify('تم إرسال التنبيه التجريبي وتسجيل نتيجة كل قناة');
+      const failed = res.results.filter(
+        (r) => r.channel !== 'in_app' && r.status !== 'sent'
+      );
+      if (!res.ok || failed.length > 0) {
+        const errorSummary = failed
+          .map((f) => `[${f.channel}: ${f.status}] ${f.detail}`)
+          .join(' | ');
+        onNotify(`فشل إرسال بعض القنوات: ${errorSummary}`, true);
+      } else {
+        onNotify('تم إرسال التنبيه التجريبي بنجاح عبر البريد وواتساب ولوحة التحكم');
+      }
     } catch (err) {
       onNotify(err instanceof Error ? err.message : 'تعذر إرسال التنبيه التجريبي', true);
     } finally {
       setTestingNotifications(false);
+    }
+  };
+
+  const handleCheckEnvStatus = async () => {
+    setCheckingEnv(true);
+    try {
+      const res = await adminApi.checkNotificationEnv();
+      setEnvCheckResult(res);
+      if (res.ok) {
+        onNotify('جميع متغيرات البيئة الستة محمّلة بنجاح (LOADED) على الخادم');
+      } else {
+        onNotify(
+          `بعض متغيرات البيئة مفقودة على الخادم (MISSING): ${res.missingKeys.join(', ')}`,
+          true
+        );
+      }
+    } catch (err) {
+      onNotify(
+        err instanceof Error ? err.message : 'تعذر فحص متغيرات البيئة على الخادم',
+        true
+      );
+    } finally {
+      setCheckingEnv(false);
     }
   };
 
@@ -408,19 +458,34 @@ export function AdminSettingsSection({
               حالة الربط الفعلية على الخادم بدون كشف مفاتيح الربط السرية
             </p>
           </div>
-          <button
-            type="button"
-            disabled={testingNotifications}
-            onClick={handleTestNotifications}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#0F5E36] hover:bg-[#0B4A2A] disabled:opacity-60 text-white text-xs font-bold cursor-pointer"
-          >
-            <BellRing className="w-4 h-4" />
-            <span>
-              {testingNotifications
-                ? 'جاري الاختبار...'
-                : 'إرسال تنبيه تجريبي الآن'}
-            </span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={checkingEnv}
+              onClick={handleCheckEnvStatus}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-[#0F5E36] text-[#0F5E36] hover:bg-[#EEF5EE] disabled:opacity-60 text-xs font-bold cursor-pointer"
+            >
+              <KeyRound className="w-4 h-4" />
+              <span>
+                {checkingEnv
+                  ? 'جاري الفحص...'
+                  : 'فحص متغيرات البيئة (Secrets)'}
+              </span>
+            </button>
+            <button
+              type="button"
+              disabled={testingNotifications}
+              onClick={handleTestNotifications}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#0F5E36] hover:bg-[#0B4A2A] disabled:opacity-60 text-white text-xs font-bold cursor-pointer"
+            >
+              <BellRing className="w-4 h-4" />
+              <span>
+                {testingNotifications
+                  ? 'جاري الاختبار...'
+                  : 'إرسال تنبيه تجريبي الآن'}
+              </span>
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
@@ -459,7 +524,7 @@ export function AdminSettingsSection({
             </div>
             <p className="text-xs text-[#526056] leading-relaxed">
               {capabilities?.emailConfigured
-                ? `يرسل تلقائياً إلى ${capabilities.ownerNotificationEmail}`
+                ? `يرسل تلقائياً إلى جميع حسابات الملاك والمسؤولين المسجلة بالإضافة إلى ${capabilities.ownerNotificationEmail}`
                 : 'أضف GMAIL_USER و GMAIL_APP_PASSWORD (أو RESEND_API_KEY أو بيانات SMTP) في Secrets لتفعيل الإرسال التلقائي.'}
             </p>
           </div>
@@ -490,15 +555,63 @@ export function AdminSettingsSection({
           </div>
         </div>
 
+        {envCheckResult && (
+          <div className="border border-[#D4DDD1] bg-[#F9FAF8] rounded-xl p-4 space-y-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-bold text-[#142218]">
+                حالة متغيرات البيئة على الخادم (تم تسجيلها في Console الخادم):
+              </p>
+              <span
+                className={`text-[11px] font-bold px-2 py-0.5 rounded ${
+                  envCheckResult.ok
+                    ? 'bg-[#DCFCE7] text-[#166534]'
+                    : 'bg-[#FEE2E2] text-[#991B1B]'
+                }`}
+              >
+                {envCheckResult.ok ? 'ALL LOADED' : 'MISSING KEYS'}
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-xs font-mono">
+              {Object.entries(envCheckResult.status).map(([key, state]) => (
+                <div
+                  key={key}
+                  dir="ltr"
+                  className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 ${
+                    state === 'LOADED'
+                      ? 'bg-[#EEF5EE] border-[#C9DEC9] text-[#0F5E36]'
+                      : 'bg-[#FEF2F2] border-[#FECACA] text-[#991B1B]'
+                  }`}
+                >
+                  <span className="truncate font-semibold">{key}</span>
+                  <span className="font-bold shrink-0">{state}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {testResults && (
-          <div className="border border-[#C9DEC9] bg-[#EEF5EE] rounded-xl p-4 space-y-2">
+          <div className="border border-[#C9DEC9] bg-[#EEF5EE] rounded-xl p-4 space-y-2.5">
             <p className="text-xs font-bold text-[#0F5E36]">نتائج التنبيه التجريبي:</p>
-            <ul className="space-y-1 text-xs text-[#142218]">
+            <ul className="space-y-2 text-xs text-[#142218]">
               {testResults.map((r) => (
-                <li key={r.id} className="flex items-center justify-between gap-3">
-                  <span className="font-semibold">{r.channel}</span>
-                  <span className="text-[#3D4B41] truncate flex-1">{r.detail}</span>
-                  <span className="font-bold shrink-0">{r.status}</span>
+                <li
+                  key={r.id}
+                  className={`rounded-lg border p-2.5 space-y-1 ${
+                    r.status === 'sent'
+                      ? 'bg-white border-[#C9DEC9]'
+                      : r.status === 'failed'
+                        ? 'bg-[#FEF2F2] border-[#FECACA] text-[#991B1B]'
+                        : 'bg-[#FFFBEB] border-[#FDE68A] text-[#92400E]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-bold">{r.channel}</span>
+                    <span className="font-bold uppercase shrink-0">{r.status}</span>
+                  </div>
+                  <p className="whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed">
+                    {r.detail}
+                  </p>
                 </li>
               ))}
             </ul>

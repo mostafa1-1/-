@@ -39,7 +39,7 @@ export function Footer({
           </div>
           <p className="text-sm text-[#B8C4B6] leading-relaxed">
             {lang === 'ar'
-              ? 'وجهتك الموثوقة للتسوق اليومي: خضروات وفواكه طازجة، ألبان، لحوم، ومستلزمات المنزل بأفضل الأسعار وتوصيل سريع حتى باب بيتك.'
+              ? 'سوبر ماركت الأندلس.. كل اللي محتاجه لبيتك طازة وبأحسن سعر لحد بابك.'
               : 'Your trusted neighborhood grocery destination for fresh produce, dairy, meats, and home essentials with fast delivery.'}
           </p>
           <p className="text-xs text-[#91A18F]">
@@ -101,7 +101,7 @@ export function Footer({
         {/* Column 4: Direct Delivery Contact */}
         <div className="space-y-4">
           <h3 className="text-sm font-semibold text-white">
-            {lang === 'ar' ? 'خدمة التوصيل المباشر' : 'Direct Delivery Desk'}
+            {lang === 'ar' ? 'اطلب بالتليفون أو واتساب' : 'Direct Delivery Desk'}
           </h3>
           <p className="text-xs text-[#B8C4B6] leading-relaxed">
             {lang === 'ar' ? settings.addressAr : settings.addressEn}

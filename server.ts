@@ -36,9 +36,15 @@ import {
   validateProductPayload,
   validateSettingsPayload,
 } from './src/utils/adminLogic.ts';
-import { getNotificationChannelCapabilities } from './src/utils/notificationLogic.ts';
 import {
+  getNotificationChannelCapabilities,
+  getRequiredNotificationEnvStatus,
+} from './src/utils/notificationLogic.ts';
+import {
+  dispatchContactMessageNotificationsAsync,
   dispatchNewOrderNotifications,
+  dispatchNewOrderNotificationsAsync,
+  dispatchStoreEventNotificationsAsync,
   registerNotificationBroadcaster,
 } from './src/services/notifications.ts';
 import type { Order, OrderStatus } from './src/types/store.ts';
@@ -66,6 +72,12 @@ const VALID_ORDER_STATUSES = new Set<OrderStatus>([
 ]);
 
 async function startServer() {
+  const envStatus = getRequiredNotificationEnvStatus(process.env);
+  console.log('[Startup] Notification Environment Variables Check:');
+  for (const [key, state] of Object.entries(envStatus)) {
+    console.log(`  - ${key}: ${state}`);
+  }
+
   const app = express();
   const PORT = Number(process.env.PORT || 3000);
 
@@ -105,7 +117,19 @@ async function startServer() {
 
   app.post('/api/orders', async (req, res) => {
     try {
-      const order = await createCustomerOrder(req.body);
+      const { order, isNew, settings } = await createCustomerOrder(req.body);
+
+      if (isNew) {
+        try {
+          await dispatchNewOrderNotificationsAsync(order, settings);
+        } catch (notifErr) {
+          console.error(
+            `[Orders][${order.orderNumber}] Notification launch error:`,
+            notifErr
+          );
+        }
+      }
+
       res.status(201).json(order);
     } catch (error: unknown) {
       const status =
@@ -114,6 +138,34 @@ async function startServer() {
           : 500;
       const message = error instanceof Error ? error.message : 'Order failed';
       res.status(status).json({ error: message });
+    }
+  });
+
+  app.post('/api/contact', async (req, res) => {
+    try {
+      const name = String(req.body?.name || '').trim();
+      const phone = String(req.body?.phone || '').trim();
+      const message = String(req.body?.message || '').trim();
+
+      if (name.length < 2 || phone.length < 8 || message.length < 5) {
+        return res.status(400).json({
+          error: 'من فضلك اكتب اسمك ورقم تليفونك ورسالتك بشكل صحيح.',
+        });
+      }
+
+      const adminSettings = await getAdminStoreSettings();
+      dispatchContactMessageNotificationsAsync(
+        { name, phone, message, createdAt: new Date().toISOString() },
+        adminSettings
+      );
+
+      res.status(201).json({
+        ok: true,
+        message: 'رسالتك وصلتنا يا فندم! هنكلمك في أسرع وقت.',
+      });
+    } catch (error: unknown) {
+      const errMsg = error instanceof Error ? error.message : 'Contact submission failed';
+      res.status(500).json({ error: errMsg });
     }
   });
 
@@ -219,13 +271,56 @@ async function startServer() {
         totalAmount: 150,
       };
       const results = await dispatchNewOrderNotifications(testOrder, adminSettings);
-      res.json({ ok: true, results });
+      const failed = results.filter(
+        (r) => r.channel !== 'in_app' && r.status !== 'sent'
+      );
+      if (failed.length > 0) {
+        console.error(
+          '[Notifications][Test] Delivery issues detected:',
+          failed.map((r) => `${r.channel} (${r.status}): ${r.detail}`)
+        );
+      }
+      res.json({
+        ok: failed.length === 0,
+        results,
+        errors: failed.map((r) => ({
+          channel: r.channel,
+          status: r.status,
+          detail: r.detail,
+        })),
+      });
     } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : 'Test notification failed';
+      console.error('[Notifications][Test] Unhandled error:', error);
       res.status(500).json({ error: message });
     }
   });
+
+  const handleNotificationEnvCheck = (
+    _req: AuthRequest,
+    res: express.Response
+  ) => {
+    const status = getRequiredNotificationEnvStatus(process.env);
+    const missingKeys = Object.entries(status)
+      .filter(([, state]) => state === 'MISSING')
+      .map(([key]) => key);
+
+    console.log('[Admin][EnvCheck] Notification Environment Variables Status:');
+    for (const [key, state] of Object.entries(status)) {
+      console.log(`  - ${key}: ${state}`);
+    }
+
+    res.json({
+      ok: missingKeys.length === 0,
+      status,
+      missingKeys,
+      checkedAt: new Date().toISOString(),
+    });
+  };
+
+  app.get('/api/admin/notifications/env-check', requireAdmin, handleNotificationEnvCheck);
+  app.post('/api/admin/notifications/env-check', requireAdmin, handleNotificationEnvCheck);
 
   app.post('/api/admin/upload', requireAdmin, async (req, res) => {
     try {
@@ -423,11 +518,25 @@ async function startServer() {
     }
   });
 
-  app.put('/api/admin/settings', requireAdmin, async (req, res) => {
+  app.put('/api/admin/settings', requireAdmin, async (req: AuthRequest, res) => {
     try {
       const err = validateSettingsPayload(req.body);
       if (err) return res.status(400).json({ error: err });
       const updated = await updateStoreSettingsRecord(req.body);
+      dispatchStoreEventNotificationsAsync(
+        {
+          eventType: 'settings_updated',
+          title: 'تحديث إعدادات المتجر',
+          actorEmail: req.dbUser?.email,
+          details: [
+            { label: 'اسم المتجر', value: updated.nameAr },
+            { label: 'حالة استقبال الطلبات', value: updated.orderingEnabled ? 'مفعّل' : 'متوقف' },
+            { label: 'رسوم التوصيل', value: `${updated.deliveryFee} ج.م` },
+            { label: 'التوصيل المجاني فوق', value: `${updated.freeDeliveryThreshold} ج.م` },
+          ],
+        },
+        updated
+      );
       res.json(updated);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Update settings failed';
@@ -435,9 +544,19 @@ async function startServer() {
     }
   });
 
-  app.post('/api/admin/allowlist', requireAdmin, async (req, res) => {
+  app.post('/api/admin/allowlist', requireAdmin, async (req: AuthRequest, res) => {
     try {
-      const list = await addAdminAllowlistEmail(String(req.body?.email || ''));
+      const targetEmail = String(req.body?.email || '').trim().toLowerCase();
+      const list = await addAdminAllowlistEmail(targetEmail);
+      dispatchStoreEventNotificationsAsync({
+        eventType: 'allowlist_added',
+        title: 'إضافة مالك / مسؤول جديد لصلاحيات المتجر',
+        actorEmail: req.dbUser?.email,
+        details: [
+          { label: 'البريد المضاف', value: targetEmail },
+          { label: 'إجمالي الحسابات المصرح لها', value: String(list.length) },
+        ],
+      });
       res.json({ allowlist: list });
     } catch (error: unknown) {
       const status =
@@ -449,9 +568,19 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/admin/allowlist/:email', requireAdmin, async (req, res) => {
+  app.delete('/api/admin/allowlist/:email', requireAdmin, async (req: AuthRequest, res) => {
     try {
-      const list = await removeAdminAllowlistEmail(req.params.email);
+      const removedEmail = String(req.params.email || '').trim().toLowerCase();
+      const list = await removeAdminAllowlistEmail(removedEmail);
+      dispatchStoreEventNotificationsAsync({
+        eventType: 'allowlist_removed',
+        title: 'إزالة حساب من صلاحيات الإدارة',
+        actorEmail: req.dbUser?.email,
+        details: [
+          { label: 'البريد المُزال', value: removedEmail },
+          { label: 'إجمالي الحسابات المصرح لها', value: String(list.length) },
+        ],
+      });
       res.json({ allowlist: list });
     } catch (error: unknown) {
       const status =
@@ -467,16 +596,11 @@ async function startServer() {
 
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
-    const isCloudProxy = Boolean(
-      process.env.K_SERVICE ||
-        process.env.CLOUD_RUN_EXECUTION ||
-        (process.env.APP_URL && process.env.APP_URL.startsWith('https://'))
-    );
-    const hmrDisabled = process.env.DISABLE_HMR === 'true' || isCloudProxy;
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
-        hmr: hmrDisabled ? false : { clientPort: 443 },
+        hmr: false,
+        ws: false,
       },
       appType: 'spa',
     });

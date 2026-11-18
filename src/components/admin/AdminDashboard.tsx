@@ -90,9 +90,12 @@ export function AdminDashboard({
 
   const notify = (text: string, isError = false) => {
     setNotice({ text, isError });
-    window.setTimeout(() => {
-      setNotice((prev) => (prev?.text === text ? null : prev));
-    }, 3200);
+    window.setTimeout(
+      () => {
+        setNotice((prev) => (prev?.text === text ? null : prev));
+      },
+      isError ? 9000 : 3200
+    );
   };
 
   const loadAdminData = useCallback(async () => {
@@ -147,6 +150,7 @@ export function AdminDashboard({
               type?: string;
               order?: Order;
               notification?: OrderNotificationRecord;
+              notificationErrors?: { channel: string; status: string; detail: string }[];
             };
             if (msg.type === 'order:created' && msg.order && msg.notification) {
               const incomingOrder = msg.order;
@@ -183,6 +187,12 @@ export function AdminDashboard({
               setLiveAlertOrder(incomingOrder);
               if (soundEnabledRef.current) {
                 playOrderAlertSound();
+              }
+              if (msg.notificationErrors && msg.notificationErrors.length > 0) {
+                const errText = msg.notificationErrors
+                  .map((e) => `[${e.channel}: ${e.status}] ${e.detail}`)
+                  .join(' | ');
+                notify(`تنبيه إشعارات الطلب ${incomingOrder.orderNumber}: ${errText}`, true);
               }
               if (!isTestAlert) {
                 void onStoreUpdated();
@@ -777,7 +787,7 @@ export function AdminDashboard({
           {notice && (
             <div
               role="status"
-              className={`mb-5 px-4 py-3 rounded-xl text-sm font-medium border ${
+              className={`mb-5 px-4 py-3 rounded-xl text-sm font-medium border whitespace-pre-wrap [overflow-wrap:anywhere] ${
                 notice.isError
                   ? 'bg-[#FEE2E2] border-[#FECACA] text-[#991B1B]'
                   : 'bg-[#EEF5EE] border-[#C9DEC9] text-[#0F5E36]'

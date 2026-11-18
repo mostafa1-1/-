@@ -282,3 +282,58 @@ export function generateOrderNumber(now: Date = new Date()): string {
   const rand = Math.floor(1000 + Math.random() * 9000);
   return `AND-${y}${m}${d}-${rand}`;
 }
+
+export function buildProductUrl(productId: string, originOrUrl = ''): string {
+  const trimmed = originOrUrl.trim();
+  const expectedPath = `/product/${encodeURIComponent(productId)}`;
+  if (!trimmed) {
+    return expectedPath;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    // If already a full product page URL (e.g. window.location.href), preserve current URL cleanly
+    if (parsed.pathname.startsWith('/product/')) {
+      return parsed.toString();
+    }
+    return `${parsed.origin}${expectedPath}`;
+  } catch {
+    const cleanOrigin = trimmed.replace(/\/+$/, '');
+    return `${cleanOrigin}${expectedPath}`;
+  }
+}
+
+export interface ProductSharePayload {
+  title: string;
+  text: string;
+  url: string;
+  whatsappUrl: string;
+}
+
+export function buildProductShareData(
+  product: Pick<Product, 'id' | 'nameAr' | 'nameEn'>,
+  lang: Language,
+  currentUrlOrOrigin = ''
+): ProductSharePayload {
+  const url = buildProductUrl(product.id, currentUrlOrOrigin);
+  const productName = lang === 'ar' ? product.nameAr : product.nameEn;
+  const text =
+    lang === 'ar'
+      ? `جرب "${productName}" من سوبر ماركت الأندلس:`
+      : `Check out "${productName}" from Al Andalus Supermarket:`;
+  const whatsappMessage = `${text}\n${url}`;
+  return {
+    title: productName,
+    text,
+    url,
+    whatsappUrl: `https://wa.me/?text=${encodeURIComponent(whatsappMessage)}`,
+  };
+}
+
+export function buildWhatsAppProductShareUrl(
+  product: Pick<Product, 'id' | 'nameAr' | 'nameEn'>,
+  lang: Language,
+  currentUrlOrOrigin = ''
+): string {
+  return buildProductShareData(product, lang, currentUrlOrOrigin).whatsappUrl;
+}
+

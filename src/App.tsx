@@ -101,6 +101,7 @@ export default function App() {
   const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
   const [lastOrder, setLastOrder] = useState<Order | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [orderAlertToast, setOrderAlertToast] = useState<string | null>(null);
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
@@ -154,7 +155,7 @@ export default function App() {
     try {
       const response = await fetch('/api/store', { cache: 'no-store' });
       if (!response.ok) {
-        throw new Error('تعذر الاتصال بخادم المتجر');
+        throw new Error('معلش مش عارفين نوصل لسيرفر المتجر دلوقتي');
       }
       const data = (await response.json()) as {
         settings: StoreSettings;
@@ -169,7 +170,7 @@ export default function App() {
       setStoreLoaded(true);
     } catch (err) {
       setStoreLoadError(
-        err instanceof Error ? err.message : 'تعذر تحميل بيانات المتجر'
+        err instanceof Error ? err.message : 'معلش حصل مشكلة في تحميل المنتجات'
       );
       setStoreLoaded(true);
     }
@@ -284,7 +285,7 @@ export default function App() {
     });
     const title = lang === 'ar' ? product.nameAr : product.nameEn;
     showToast(
-      lang === 'ar' ? `تمت إضافة "${title}" إلى السلة` : `Added "${title}" to your cart`
+      lang === 'ar' ? `حطينا "${title}" في السلة` : `Added "${title}" to your cart`
     );
   };
 
@@ -357,21 +358,37 @@ export default function App() {
         const message =
           (payload as { error?: string }).error ||
           (lang === 'ar'
-            ? 'تعذر حفظ الطلب في قاعدة البيانات. يرجى المحاولة مرة أخرى.'
+            ? 'معلش الطلب متحفظش.. جرب تبعته تاني.'
             : 'Could not save your order to the database. Please try again.');
         setCheckoutError(message);
         await refreshStoreData();
         return;
       }
 
-      const createdOrder = payload as Order;
+      const createdOrder = payload as Order & {
+        notificationErrors?: { channel: string; status: string; detail: string }[];
+      };
       if (!createdOrder || !createdOrder.orderNumber) {
         setCheckoutError(
           lang === 'ar'
-            ? 'استجابة غير متوقعة من الخادم. يرجى التحقق من الطلب أو الاتصال بنا.'
+            ? 'حصل رد مش متوقع من السيرفر.. اتأكد من طلبك أو كلمنا على التليفون.'
             : 'Unexpected server response. Please verify your order or call us.'
         );
         return;
+      }
+
+      if (createdOrder.notificationErrors && createdOrder.notificationErrors.length > 0) {
+        const errDetails = createdOrder.notificationErrors
+          .map((e) => `[${e.channel}: ${e.status}] ${e.detail}`)
+          .join(' | ');
+        const alertMsg =
+          lang === 'ar'
+            ? `طلبك اتسجل، بس بعض تنبيهات المتجر موصلتش: ${errDetails}`
+            : `Order saved, but store notification delivery reported errors: ${errDetails}`;
+        setOrderAlertToast(alertMsg);
+        window.setTimeout(() => {
+          setOrderAlertToast((prev) => (prev === alertMsg ? null : prev));
+        }, 9000);
       }
 
       setLastOrder(createdOrder);
@@ -382,7 +399,7 @@ export default function App() {
     } catch {
       setCheckoutError(
         lang === 'ar'
-          ? 'حدث خطأ في الاتصال بالخادم أثناء إرسال الطلب. لم يتم تأكيد الطلب.'
+          ? 'مفيش اتصال بالسيرفر دلوقتي.. جرب تبعت طلبك تاني.'
           : 'Network error while submitting your order. Your order was not confirmed.'
       );
     } finally {
@@ -443,7 +460,7 @@ export default function App() {
             <div className="w-10 h-10 border-2 border-[#0F5E36] border-t-transparent rounded-full animate-spin mx-auto" />
             <p className="text-sm font-medium text-[#526056]">
               {lang === 'ar'
-                ? 'جاري تحميل منتجات سوبر ماركت الأندلس...'
+                ? 'بنجهزلك منتجات سوبر ماركت الأندلس...'
                 : 'Loading Al Andalus Supermarket catalog...'}
             </p>
           </div>
@@ -456,7 +473,7 @@ export default function App() {
                 onClick={() => void refreshStoreData()}
                 className="px-5 py-2.5 rounded-xl bg-[#0F5E36] text-white text-sm font-semibold cursor-pointer"
               >
-                {lang === 'ar' ? 'إعادة المحاولة' : 'Retry'}
+                {lang === 'ar' ? 'جرّب تاني' : 'Retry'}
               </button>
             </div>
           </div>
@@ -510,6 +527,7 @@ export default function App() {
             {route === 'product' &&
               (selectedProduct ? (
                 <ProductDetailPage
+                  key={selectedProduct.id}
                   product={selectedProduct}
                   category={categories.find((c) => c.id === selectedProduct.categoryId)}
                   relatedProducts={relatedProducts}
@@ -604,18 +622,40 @@ export default function App() {
       <a
         href={`${buildWhatsappUrl(settings.whatsappNumber || '+201110688934')}?text=${encodeURIComponent(
           lang === 'ar'
-            ? `مرحباً ${settings.nameAr}، أود الاستفسار أو الطلب عبر واتساب`
+            ? `أهلاً ${settings.nameAr}، عاوز أسأل أو أطلب أوردر على واتساب`
             : `Hello ${settings.nameEn}, I would like to inquire or place an order`
         )}`}
         target="_blank"
         rel="noopener noreferrer"
-        aria-label={lang === 'ar' ? 'تواصل عبر واتساب +201110688934' : 'Chat on WhatsApp +201110688934'}
+        aria-label={lang === 'ar' ? 'كلمنا على واتساب +201110688934' : 'Chat on WhatsApp +201110688934'}
         data-testid="floating-whatsapp-btn"
         className="no-print fixed bottom-5 end-5 z-40 inline-flex items-center gap-2 px-4 py-3 rounded-full bg-[#0F5E36] hover:bg-[#0B4A2A] text-white text-sm font-bold shadow-lg transition-colors"
       >
         <MessageCircle className="w-5 h-5 shrink-0" aria-hidden="true" />
         <span className="hidden sm:inline">{copy.whatsappOrder}</span>
       </a>
+
+      {/* Order notification API warning toast */}
+      {orderAlertToast && (
+        <div
+          role="alert"
+          aria-live="assertive"
+          data-testid="order-notification-error-toast"
+          className="no-print fixed bottom-20 start-5 end-5 sm:end-auto sm:w-[32rem] sm:max-w-[calc(100vw-2.5rem)] z-50 bg-[#FEF2F2] border border-[#FECACA] text-[#991B1B] text-xs sm:text-sm font-medium px-4 py-3 rounded-xl shadow-lg flex items-start justify-between gap-3"
+        >
+          <span className="min-w-0 flex-1 whitespace-pre-wrap [overflow-wrap:anywhere] leading-relaxed">
+            {orderAlertToast}
+          </span>
+          <button
+            type="button"
+            onClick={() => setOrderAlertToast(null)}
+            aria-label={lang === 'ar' ? 'إغلاق التنبيه' : 'Dismiss alert'}
+            className="text-xs font-bold text-[#991B1B] hover:underline cursor-pointer shrink-0 p-0.5"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Non-intrusive cart feedback toast */}
       {toastMessage && (

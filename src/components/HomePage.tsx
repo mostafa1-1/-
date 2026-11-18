@@ -106,7 +106,7 @@ export function HomePage({
                     type="submit"
                     className="px-4 py-2 rounded-lg bg-[#142218] hover:bg-[#0F5E36] text-white text-xs sm:text-sm font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                   >
-                    {lang === 'ar' ? 'بحث' : 'Search'}
+                    {lang === 'ar' ? 'دوّر' : 'Search'}
                   </button>
                 </div>
               </form>
@@ -160,10 +160,12 @@ export function HomePage({
                 <ShieldCheck className="w-5 h-5" aria-hidden="true" />
               </div>
               <div>
-                <p className="text-lg font-bold text-[#142218] tabular-nums">
-                  {lang === 'ar' ? `أكثر من ${products.length} منتج` : `${products.length}+ ${copy.productsCountSuffix}`}
+                <p className="text-sm sm:text-base font-bold text-[#142218]">
+                  {copy.metricFresh}
                 </p>
-                <p className="text-xs text-[#526056]">{copy.metricFresh}</p>
+                <p className="text-xs text-[#526056] tabular-nums">
+                  {lang === 'ar' ? `أكتر من ${products.length} صنف جاهز لطلبك` : `${products.length}+ ${copy.productsCountSuffix}`}
+                </p>
               </div>
             </div>
 

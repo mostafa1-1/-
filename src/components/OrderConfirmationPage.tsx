@@ -128,12 +128,12 @@ export function OrderConfirmationPage({
               <div className="space-y-1">
                 <p className="text-xs font-bold text-[#0F5E36]">
                   {lang === 'ar'
-                    ? `تذكير التحويل (${getPaymentMethodLabel(order.customer.paymentMethod, 'ar')})`
+                    ? `بيانات التحويل (${getPaymentMethodLabel(order.customer.paymentMethod, 'ar')})`
                     : `${getPaymentMethodLabel(order.customer.paymentMethod, 'en')} Transfer Details`}
                 </p>
                 <p className="text-xs text-[#3D4B41]">
                   {lang === 'ar'
-                    ? `يرجى تحويل مبلغ ${formatEGP(order.totalAmount, lang)} على رقم `
+                    ? `حوّل مبلغ ${formatEGP(order.totalAmount, lang)} على رقم `
                     : `Please transfer ${formatEGP(order.totalAmount, lang)} to `}
                   <strong dir="ltr" className="tabular-nums text-[#142218]">
                     {PAYMENT_TRANSFER_NUMBER}

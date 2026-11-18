@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { adminAuth } from '../lib/firebase-admin.ts';
 import { db } from '../db/index.ts';
 import { adminAllowlist, users } from '../db/schema.ts';
+import { dispatchStoreEventNotificationsAsync } from '../services/notifications.ts';
 
 export interface AuthRequest extends Request {
   user?: DecodedIdToken;
@@ -18,6 +19,11 @@ export interface AuthRequest extends Request {
 const BOOTSTRAP_ADMIN_EMAIL = (
   process.env.ADMIN_EMAIL || 'mostafaelfoly1000@gmail.com'
 ).toLowerCase();
+
+export function isPrivilegedRole(role?: string | null): boolean {
+  const normalized = (role || '').trim().toLowerCase();
+  return normalized === 'owner' || normalized === 'admin';
+}
 
 export async function isEmailAuthorizedAdmin(email: string): Promise<boolean> {
   const normalized = email.trim().toLowerCase();
@@ -39,8 +45,15 @@ export async function isEmailAuthorizedAdmin(email: string): Promise<boolean> {
 
 export async function upsertAuthUser(uid: string, email: string) {
   const normalizedEmail = email.trim().toLowerCase();
+  const [existingUser] = await db
+    .select()
+    .from(users)
+    .where(eq(users.uid, uid))
+    .limit(1);
+
   const adminAuthorized = await isEmailAuthorizedAdmin(normalizedEmail);
-  const role = adminAuthorized ? 'admin' : 'customer';
+  const existingIsOwner = existingUser?.role?.trim().toLowerCase() === 'owner';
+  const role = existingIsOwner ? 'owner' : adminAuthorized ? 'admin' : 'customer';
 
   const result = await db
     .insert(users)
@@ -58,7 +71,31 @@ export async function upsertAuthUser(uid: string, email: string) {
     })
     .returning();
 
-  return result[0];
+  const savedUser = result[0];
+  const wasPrivilegedBefore = isPrivilegedRole(existingUser?.role);
+  const isPrivilegedNow = isPrivilegedRole(savedUser?.role);
+
+  if (isPrivilegedNow && !wasPrivilegedBefore) {
+    dispatchStoreEventNotificationsAsync({
+      eventType: 'owner_admin_registered',
+      title: existingUser
+        ? 'ترقية حساب إلى صلاحية مالك / مسؤول'
+        : 'تسجيل حساب مالك / مسؤول جديد',
+      actorEmail: normalizedEmail,
+      details: [
+        { label: 'البريد الإلكتروني', value: normalizedEmail },
+        { label: 'الصلاحية الممنوحة', value: savedUser.role },
+        {
+          label: 'نوع الإجراء',
+          value: existingUser
+            ? 'ترقية حساب مسجل سابقاً'
+            : 'تسجيل دخول أول لحساب مصرح له',
+        },
+      ],
+    });
+  }
+
+  return savedUser;
 }
 
 export async function verifyAdminBearerToken(token: string) {
@@ -70,7 +107,7 @@ export async function verifyAdminBearerToken(token: string) {
   }
 
   const dbUser = await upsertAuthUser(decodedToken.uid, decodedToken.email);
-  if (dbUser.role !== 'admin') {
+  if (!isPrivilegedRole(dbUser.role)) {
     throw Object.assign(new Error('Forbidden: Admin access required'), {
       statusCode: 403,
     });

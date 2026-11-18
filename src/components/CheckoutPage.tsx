@@ -480,7 +480,7 @@ export function CheckoutPage({
           {!settings.orderingEnabled && (
             <p className="text-xs text-[#991B1B] bg-[#FEE2E2] px-3 py-2.5 rounded-lg" role="alert">
               {lang === 'ar'
-                ? `الطلبات الإلكترونية متوقفة مؤقتاً. يمكنك الطلب مباشرة عبر الهاتف ${settings.phone}.`
+                ? `الطلبات من الموقع واقفة مؤقتاً.. كلمنا على طول على ${settings.phone} وهنوصلك فوراً.`
                 : `Online ordering is temporarily paused. Please call ${settings.phone} directly.`}
             </p>
           )}
@@ -504,7 +504,7 @@ export function CheckoutPage({
           >
             {isSubmitting
               ? lang === 'ar'
-                ? 'جاري إرسال الطلب...'
+                ? 'بنبعت طلبك دلوقتي...'
                 : 'Submitting order...'
               : copy.placeOrderBtn}
           </button>

@@ -72,7 +72,7 @@ export function CartDrawer({
           <button
             type="button"
             onClick={onClose}
-            aria-label={lang === 'ar' ? 'إغلاق السلة' : 'Close cart'}
+            aria-label={lang === 'ar' ? 'اقفل السلة' : 'Close cart'}
             className="w-10 h-10 rounded-lg inline-flex items-center justify-center text-[#526056] hover:bg-[#F1F4F0] hover:text-[#142218] transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />

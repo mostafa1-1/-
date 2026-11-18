@@ -196,6 +196,238 @@ export function buildCustomerWhatsappOrderUrl(
   return `${baseUrl}?text=${encodeURIComponent(text)}`;
 }
 
+export const REQUIRED_NOTIFICATION_ENV_KEYS = [
+  'GMAIL_USER',
+  'GMAIL_APP_PASSWORD',
+  'WHATSAPP_CLOUD_TOKEN',
+  'WHATSAPP_PHONE_NUMBER_ID',
+  'WHATSAPP_ADMIN_TO',
+  'WHATSAPP_TEMPLATE_NAME',
+] as const;
+
+export type RequiredNotificationEnvKey =
+  (typeof REQUIRED_NOTIFICATION_ENV_KEYS)[number];
+
+export function sanitizeWhatsAppToken(rawToken?: string): string {
+  if (!rawToken) return '';
+  let token = rawToken.trim();
+  while (
+    (token.startsWith('"') && token.endsWith('"')) ||
+    (token.startsWith("'") && token.endsWith("'"))
+  ) {
+    token = token.slice(1, -1).trim();
+  }
+  token = token.replace(/^(?:Bearer(?:\s+|$))+/i, '').trim();
+  while (
+    (token.startsWith('"') && token.endsWith('"')) ||
+    (token.startsWith("'") && token.endsWith("'"))
+  ) {
+    token = token.slice(1, -1).trim();
+  }
+  return token.replace(/\s+/g, '');
+}
+
+export function getRequiredNotificationEnvStatus(
+  env: Record<string, string | undefined>
+): Record<RequiredNotificationEnvKey, 'LOADED' | 'MISSING'> {
+  return {
+    GMAIL_USER: env.GMAIL_USER?.trim() ? 'LOADED' : 'MISSING',
+    GMAIL_APP_PASSWORD: env.GMAIL_APP_PASSWORD?.trim() ? 'LOADED' : 'MISSING',
+    WHATSAPP_CLOUD_TOKEN: sanitizeWhatsAppToken(env.WHATSAPP_CLOUD_TOKEN)
+      ? 'LOADED'
+      : 'MISSING',
+    WHATSAPP_PHONE_NUMBER_ID: env.WHATSAPP_PHONE_NUMBER_ID?.trim()
+      ? 'LOADED'
+      : 'MISSING',
+    WHATSAPP_ADMIN_TO: env.WHATSAPP_ADMIN_TO?.trim() ? 'LOADED' : 'MISSING',
+    WHATSAPP_TEMPLATE_NAME: env.WHATSAPP_TEMPLATE_NAME?.trim()
+      ? 'LOADED'
+      : 'MISSING',
+  };
+}
+
+export function buildWhatsAppTemplatePayload(input: {
+  to: string;
+  templateName?: string;
+  templateLang?: string;
+}) {
+  const cleanName = input.templateName?.trim() || 'hello_world';
+  const cleanLang = input.templateLang?.trim() || 'en_US';
+  return {
+    messaging_product: 'whatsapp' as const,
+    to: input.to,
+    type: 'template' as const,
+    template: {
+      name: cleanName,
+      language: { code: cleanLang },
+    },
+  };
+}
+
+const EMAIL_FORMAT_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export function resolveOwnerNotificationRecipients(input: {
+  dbRoleEmails?: readonly string[];
+  allowlistEmails?: readonly string[];
+  settingsNotificationEmail?: string | null;
+  envGMAILUser?: string | null;
+  envAdminEmail?: string | null;
+  envOwnerNotificationEmail?: string | null;
+}): string[] {
+  const seen = new Set<string>();
+  const recipients: string[] = [];
+
+  const candidates = [
+    ...(input.dbRoleEmails || []),
+    ...(input.allowlistEmails || []),
+    input.settingsNotificationEmail,
+    input.envGMAILUser,
+    input.envAdminEmail,
+    input.envOwnerNotificationEmail,
+  ];
+
+  for (const raw of candidates) {
+    if (!raw || typeof raw !== 'string') continue;
+    const normalized = raw.trim().toLowerCase();
+    if (!normalized || !EMAIL_FORMAT_REGEX.test(normalized)) continue;
+    if (!seen.has(normalized)) {
+      seen.add(normalized);
+      recipients.push(normalized);
+    }
+  }
+
+  return recipients;
+}
+
+export interface ContactNotificationInput {
+  name: string;
+  phone: string;
+  message: string;
+  createdAt?: string;
+}
+
+export function formatContactNotificationSummary(
+  input: ContactNotificationInput,
+  settings: Pick<StoreSettings, 'nameAr'>
+): string {
+  const dateStr = formatOrderTimestamp(
+    input.createdAt || new Date().toISOString(),
+    'ar'
+  );
+  return [
+    `رسالة جديدة من نموذج تواصل معنا — ${settings.nameAr}`,
+    `التاريخ والوقت: ${dateStr}`,
+    `الاسم: ${input.name.trim()}`,
+    `رقم الهاتف: ${input.phone.trim()}`,
+    `نص الرسالة:`,
+    input.message.trim(),
+  ].join('\n');
+}
+
+export function buildContactMessageEmailHtml(
+  input: ContactNotificationInput,
+  settings: Pick<StoreSettings, 'nameAr'>
+): string {
+  const dateStr = formatOrderTimestamp(
+    input.createdAt || new Date().toISOString(),
+    'ar'
+  );
+  const safeName = escapeHtml(input.name.trim());
+  const safePhone = escapeHtml(input.phone.trim());
+  const safeMessage = escapeHtml(input.message.trim()).replace(/\n/g, '<br />');
+
+  return `<!doctype html>
+<html lang="ar" dir="rtl">
+<head><meta charset="utf-8" /></head>
+<body style="margin:0;padding:24px;background:#F5F7F4;font-family:Tahoma,Arial,sans-serif;color:#142218;">
+  <div style="max-width:600px;margin:0 auto;background:#FFFFFF;border:1px solid #E2E7E0;border-radius:12px;overflow:hidden;">
+    <div style="background:#0F5E36;color:#FFFFFF;padding:20px 24px;">
+      <h1 style="margin:0;font-size:20px;">رسالة جديدة من عميل — ${escapeHtml(settings.nameAr)}</h1>
+      <p style="margin:6px 0 0;font-size:13px;opacity:0.9;">${escapeHtml(dateStr)}</p>
+    </div>
+    <div style="padding:24px;">
+      <div style="background:#F9FAF8;border:1px solid #E2E7E0;border-radius:8px;padding:14px 16px;margin-bottom:16px;font-size:14px;line-height:1.8;">
+        <div><strong>اسم المرسل:</strong> ${safeName}</div>
+        <div><strong>رقم الهاتف:</strong> <span dir="ltr">${safePhone}</span></div>
+      </div>
+      <div style="background:#EEF5EE;border:1px solid #C9DEC9;border-radius:8px;padding:16px;font-size:14px;line-height:1.8;color:#142218;">
+        <div style="font-weight:700;color:#0F5E36;margin-bottom:6px;">محتوى الرسالة / الاقتراح:</div>
+        <div>${safeMessage}</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+export interface StoreEventNotificationInput {
+  eventType: string;
+  title: string;
+  details: { label: string; value: string }[];
+  actorEmail?: string;
+  createdAt?: string;
+}
+
+export function formatStoreEventSummary(
+  input: StoreEventNotificationInput,
+  settings: Pick<StoreSettings, 'nameAr'>
+): string {
+  const dateStr = formatOrderTimestamp(
+    input.createdAt || new Date().toISOString(),
+    'ar'
+  );
+  const lines = [
+    `تنبيه إداري (${input.title}) — ${settings.nameAr}`,
+    `نوع الحدث: ${input.eventType}`,
+    `التاريخ والوقت: ${dateStr}`,
+    input.actorEmail ? `بواسطة: ${input.actorEmail}` : null,
+    ...input.details.map((d) => `${d.label}: ${d.value}`),
+  ].filter(Boolean);
+  return lines.join('\n');
+}
+
+export function buildStoreEventEmailHtml(
+  input: StoreEventNotificationInput,
+  settings: Pick<StoreSettings, 'nameAr'>
+): string {
+  const dateStr = formatOrderTimestamp(
+    input.createdAt || new Date().toISOString(),
+    'ar'
+  );
+  const rowsHtml = input.details
+    .map(
+      (d) => `
+      <tr>
+        <td style="padding:10px 12px;border-bottom:1px solid #E2E7E0;font-weight:700;color:#3D4B41;width:36%;">${escapeHtml(d.label)}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #E2E7E0;color:#142218;">${escapeHtml(d.value)}</td>
+      </tr>`
+    )
+    .join('');
+
+  return `<!doctype html>
+<html lang="ar" dir="rtl">
+<head><meta charset="utf-8" /></head>
+<body style="margin:0;padding:24px;background:#F5F7F4;font-family:Tahoma,Arial,sans-serif;color:#142218;">
+  <div style="max-width:600px;margin:0 auto;background:#FFFFFF;border:1px solid #E2E7E0;border-radius:12px;overflow:hidden;">
+    <div style="background:#142218;color:#FFFFFF;padding:20px 24px;">
+      <h1 style="margin:0;font-size:19px;">${escapeHtml(input.title)} — ${escapeHtml(settings.nameAr)}</h1>
+      <p style="margin:6px 0 0;font-size:13px;opacity:0.85;">${escapeHtml(dateStr)}</p>
+    </div>
+    <div style="padding:24px;">
+      ${
+        input.actorEmail
+          ? `<div style="background:#EEF5EE;border:1px solid #C9DEC9;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;"><strong>الحساب المنفّذ:</strong> <span dir="ltr">${escapeHtml(input.actorEmail)}</span></div>`
+          : ''
+      }
+      <table style="width:100%;border-collapse:collapse;font-size:14px;background:#F9FAF8;border:1px solid #E2E7E0;border-radius:8px;overflow:hidden;">
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
 export function getNotificationChannelCapabilities(
   env: Record<string, string | undefined>,
   settings: Pick<StoreSettings, 'notificationEmail' | 'whatsappNumber'>
@@ -206,7 +438,8 @@ export function getNotificationChannelCapabilities(
       (env.GMAIL_USER?.trim() && env.GMAIL_APP_PASSWORD?.trim())
   );
   const hasWaCloud = Boolean(
-    env.WHATSAPP_CLOUD_TOKEN?.trim() && env.WHATSAPP_PHONE_NUMBER_ID?.trim()
+    sanitizeWhatsAppToken(env.WHATSAPP_CLOUD_TOKEN) &&
+      env.WHATSAPP_PHONE_NUMBER_ID?.trim()
   );
 
   return {
@@ -215,9 +448,10 @@ export function getNotificationChannelCapabilities(
     emailConfigured: hasResend || hasSmtp,
     whatsappCloudConfigured: hasWaCloud,
     ownerNotificationEmail:
+      env.GMAIL_USER?.trim() ||
+      env.ADMIN_EMAIL?.trim() ||
       settings.notificationEmail?.trim() ||
       env.OWNER_NOTIFICATION_EMAIL?.trim() ||
-      env.ADMIN_EMAIL?.trim() ||
       'mostafaelfoly1000@gmail.com',
     whatsappPublicNumber: '+201110688934',
   };

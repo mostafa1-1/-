@@ -10,6 +10,7 @@ import type {
   StoreSettings,
 } from '../types/store';
 import type { ProductInputPayload } from './adminLogic';
+import type { RequiredNotificationEnvKey } from './notificationLogic';
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
   const user = auth.currentUser;
@@ -68,10 +69,19 @@ export const adminApi = {
     }),
 
   sendTestNotification: () =>
-    apiRequest<{ ok: boolean; results: OrderNotificationRecord[] }>(
-      '/api/admin/notifications/test',
-      { method: 'POST' }
-    ),
+    apiRequest<{
+      ok: boolean;
+      results: OrderNotificationRecord[];
+      errors?: { channel: string; status: string; detail: string }[];
+    }>('/api/admin/notifications/test', { method: 'POST' }),
+
+  checkNotificationEnv: () =>
+    apiRequest<{
+      ok: boolean;
+      status: Record<RequiredNotificationEnvKey, 'LOADED' | 'MISSING'>;
+      missingKeys: string[];
+      checkedAt: string;
+    }>('/api/admin/notifications/env-check', { method: 'POST' }),
 
   uploadImageFile: async (file: File): Promise<{ id: string; url: string }> => {
     const dataUrl = await new Promise<string>((resolve, reject) => {

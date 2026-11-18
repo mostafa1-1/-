@@ -1,10 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildContactMessageEmailHtml,
   buildCustomerWhatsappOrderUrl,
   buildOrderEmailHtml,
+  buildStoreEventEmailHtml,
+  buildWhatsAppTemplatePayload,
+  formatContactNotificationSummary,
   formatOrderNotificationSummary,
+  formatStoreEventSummary,
   getNotificationChannelCapabilities,
+  getRequiredNotificationEnvStatus,
+  resolveOwnerNotificationRecipients,
+  sanitizeWhatsAppToken,
 } from './notificationLogic.ts';
 import type { Order, StoreSettings } from '../types/store.ts';
 
@@ -159,3 +167,109 @@ test('notifications include Vodafone Cash / InstaPay transfer number 01110688934
   assert.match(decoded, /01110688934/);
   assert.match(decoded, /01012345678/);
 });
+
+test('getRequiredNotificationEnvStatus reports LOADED vs MISSING for all 6 notification secrets', () => {
+  const partial = getRequiredNotificationEnvStatus({
+    GMAIL_USER: 'mostafaelfoly1000@gmail.com',
+    GMAIL_APP_PASSWORD: '  ',
+    WHATSAPP_CLOUD_TOKEN: 'EAAG_token',
+  });
+  assert.deepEqual(partial, {
+    GMAIL_USER: 'LOADED',
+    GMAIL_APP_PASSWORD: 'MISSING',
+    WHATSAPP_CLOUD_TOKEN: 'LOADED',
+    WHATSAPP_PHONE_NUMBER_ID: 'MISSING',
+    WHATSAPP_ADMIN_TO: 'MISSING',
+    WHATSAPP_TEMPLATE_NAME: 'MISSING',
+  });
+
+  const waDefault = buildWhatsAppTemplatePayload({ to: '201110688934' });
+  assert.deepEqual(waDefault, {
+    messaging_product: 'whatsapp',
+    to: '201110688934',
+    type: 'template',
+    template: {
+      name: 'hello_world',
+      language: { code: 'en_US' },
+    },
+  });
+  assert.equal('components' in waDefault.template, false);
+});
+
+test('sanitizeWhatsAppToken trims whitespace, quotes, newlines, and duplicate Bearer prefixes', () => {
+  assert.equal(sanitizeWhatsAppToken(undefined), '');
+  assert.equal(sanitizeWhatsAppToken('   '), '');
+  assert.equal(sanitizeWhatsAppToken('""'), '');
+  assert.equal(sanitizeWhatsAppToken('Bearer   '), '');
+  assert.equal(
+    sanitizeWhatsAppToken('  "Bearer EAAxyz123456\n"  '),
+    'EAAxyz123456'
+  );
+  assert.equal(
+    sanitizeWhatsAppToken("Bearer Bearer 'EAAabc\r\ndef'"),
+    'EAAabcdef'
+  );
+  assert.equal(
+    sanitizeWhatsAppToken('EAAGm0PX4ZCpsValidToken'),
+    'EAAGm0PX4ZCpsValidToken'
+  );
+});
+
+test('resolveOwnerNotificationRecipients deduplicates DB role emails, allowlist, and env fallbacks', () => {
+  const result = resolveOwnerNotificationRecipients({
+    dbRoleEmails: ['  Owner@Andalus.com ', 'admin2@andalus.com', 'not-an-email'],
+    allowlistEmails: ['OWNER@andalus.com', 'partner@andalus.com', ''],
+    settingsNotificationEmail: 'store@andalus.com',
+    envGMAILUser: 'partner@andalus.com',
+    envAdminEmail: 'superadmin@andalus.com',
+    envOwnerNotificationEmail: 'store@andalus.com',
+  });
+
+  assert.deepEqual(result, [
+    'owner@andalus.com',
+    'admin2@andalus.com',
+    'partner@andalus.com',
+    'store@andalus.com',
+    'superadmin@andalus.com',
+  ]);
+});
+
+test('contact message and store event email builders format and escape fields safely', () => {
+  const contactInput = {
+    name: 'كريم <سعيد>',
+    phone: '01110688934',
+    message: 'عاوز طلب خضار طازة الساعة 5\nشكراً',
+    createdAt: '2026-11-17T10:00:00.000Z',
+  };
+  const contactSummary = formatContactNotificationSummary(contactInput, sampleSettings);
+  assert.match(contactSummary, /كريم <سعيد>/);
+  assert.match(contactSummary, /01110688934/);
+  assert.match(contactSummary, /عاوز طلب خضار طازة/);
+
+  const contactHtml = buildContactMessageEmailHtml(contactInput, sampleSettings);
+  assert.ok(!contactHtml.includes('<سعيد>'));
+  assert.ok(contactHtml.includes('&lt;سعيد&gt;'));
+  assert.ok(contactHtml.includes('01110688934'));
+  assert.ok(contactHtml.includes('<br />'));
+
+  const eventInput = {
+    eventType: 'owner_admin_registered',
+    title: 'تسجيل مالك / مسؤول جديد',
+    actorEmail: 'newadmin@andalus.com',
+    details: [
+      { label: 'البريد الإلكتروني', value: 'newadmin@andalus.com' },
+      { label: 'الصلاحية', value: 'admin <verified>' },
+    ],
+    createdAt: '2026-11-17T10:00:00.000Z',
+  };
+  const eventSummary = formatStoreEventSummary(eventInput, sampleSettings);
+  assert.match(eventSummary, /newadmin@andalus\.com/);
+  assert.match(eventSummary, /تسجيل مالك \/ مسؤول جديد/);
+
+  const eventHtml = buildStoreEventEmailHtml(eventInput, sampleSettings);
+  assert.ok(!eventHtml.includes('<verified>'));
+  assert.ok(eventHtml.includes('&lt;verified&gt;'));
+  assert.ok(eventHtml.includes('newadmin@andalus.com'));
+});
+
+
